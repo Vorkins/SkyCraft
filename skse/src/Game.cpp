@@ -976,7 +976,16 @@ namespace skycraft
 
 			// Tell Minecraft where Skyrim's player is and where they're looking.
 			proto::SkyState sky{};
-			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u);
+			auto skyFlags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u);
+			if (auto* skyWeather = RE::Sky::GetSingleton(); skyWeather && cell && !cell->IsInteriorCell()) {
+				if (skyWeather->IsRaining()) {
+					skyFlags |= proto::kSkyRaining;
+				}
+				if (skyWeather->IsSnowing()) {
+					skyFlags |= proto::kSkySnowing;
+				}
+			}
+			sky.flags = skyFlags;
 			const auto skyMc = SkyToMc(current);
 			sky.worldId = worldId;
 			sky.collisionEpoch = epoch;

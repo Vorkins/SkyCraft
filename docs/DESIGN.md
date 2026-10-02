@@ -95,7 +95,11 @@ Data streams as deltas per section. MC keeps a ring around the player and evicts
 
 ### 5.2 Water
 
-Later: a Mixin on fluid-state queries reports `water` inside Skyrim water volumes. MC's swimming physics then applies unchanged.
+A Mixin on fluid-state queries reports `water` inside Skyrim water volumes. MC's swimming physics then applies unchanged.
+
+### 5.3 World clock and weather
+
+Skyrim owns the world clock while SkyCraft is active. `SkyState.gameHour` drives Minecraft `dayTime`, while Skyrim's rain/snow state is mirrored into Minecraft precipitation. Minecraft's own daylight/weather advancement remains disabled.
 
 ## 6. The player
 
@@ -146,7 +150,15 @@ For every Skyrim actor within ~64 blocks, the MC server spawns a `skycraft:actor
    - Knockback becomes a Havok impulse.
 4. **Damage scaling is an open decision (§13).** A diamond sword does 7, while a Skyrim bandit has 50–300 HP.
 
-### 8.3 An NPC hits you
+### 8.3 Loot bridge
+
+The **G** activation route first checks whether the Skyrim crosshair target is a dead actor or a container. If so, Skyrim enumerates its inventory and sends each non-quest stack over the input ring. Skyrim removes the transferred stack from its source; Minecraft creates a semantic equivalent item and preserves the source FormID in the display name. Quest objects remain in Skyrim.
+
+For multiplayer guests, the same event is forwarded from the guest client to the host server, where it is applied to that guest's Minecraft inventory.
+
+This is intentionally a translation layer, not a full Skyrim item serializer. Enchantments, soul data, tempering, unique names and other extra data are not yet reproduced as Minecraft item components.
+
+### 8.4 An NPC hits you
 
 1. Skyrim's hit on the player puppet (melee, arrow, spell) is caught in a hook and **cancelled on the Skyrim side**.
 2. The plugin sends `PlayerHurt {amount, type, sourceFormId, direction}`.
@@ -234,7 +246,7 @@ Each phase ends in something you can actually play.
 1. **Damage scaling:** Claude's call. MC→Skyrim damage is multiplied by `5 + 0.25 × NPC level` (a diamond sword crit of ~10 hits a level-10 bandit for ~75). Skyrim→MC damage is divided by 5, so a 20-damage Skyrim hit becomes 4 MC damage (2 hearts). Both are config values.
 2. **Skyrim HUD:** keep the **compass** and the **Esc (journal/system) menu**. Hide everything else.
 3. **Shouts, magic, Skyrim inventory, skill leveling:** off or ignored for now.
-4. **Loot bridge:** out of scope for now.
+4. **Loot bridge:** enabled for dead actors and containers; quest objects stay in Skyrim, and item extra-data fidelity remains future work.
 5. **Mining Skyrim ore veins** for MC ores: parked.
 
 ## 14. Risks

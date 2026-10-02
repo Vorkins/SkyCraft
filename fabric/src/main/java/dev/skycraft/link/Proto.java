@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 11;
+	public static final int VERSION = 12;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -40,6 +40,19 @@ public final class Proto {
 	// Input types added in v5
 	public static final int IN_HURT = 7;
 	public static final int IN_OPEN_MENU = 8;
+	public static final int IN_LOOT_ITEM = 9;
+
+	// Skyrim inventory -> Minecraft loot bridge categories.
+	public static final int LOOT_GOLD = 1;
+	public static final int LOOT_WEAPON = 2;
+	public static final int LOOT_ARMOR = 3;
+	public static final int LOOT_AMMO = 4;
+	public static final int LOOT_POTION = 5;
+	public static final int LOOT_INGREDIENT = 6;
+	public static final int LOOT_BOOK = 7;
+	public static final int LOOT_KEY = 8;
+	public static final int LOOT_SOUL_GEM = 9;
+	public static final int LOOT_MISC = 10;
 	public static final int HURT_MELEE = 0;
 	public static final int HURT_PROJECTILE = 1;
 	public static final int HURT_MAGIC = 2;
@@ -148,6 +161,8 @@ public final class Proto {
 	public static final int SKY_IN_GAME = 1;
 	public static final int SKY_MENU_OPEN = 1 << 1;
 	public static final int SKY_LOADING = 1 << 2;
+	public static final int SKY_RAINING = 1 << 3;
+	public static final int SKY_SNOWING = 1 << 4;
 
 	// McState (relative to OFF_MC_STATE)
 	public static final long MS_SEQ = 0x00;

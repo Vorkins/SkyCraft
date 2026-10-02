@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 11;
+	inline constexpr std::uint32_t kVersion = 12;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -59,6 +59,8 @@ namespace skycraft::proto
 		kSkyInGame = 1u << 0,    // a save is loaded and the player exists
 		kSkyMenuOpen = 1u << 1,  // a Skyrim menu owns input; MC should drop held keys
 		kSkyLoading = 1u << 2,   // loading screen / cell transition in progress
+		kSkyRaining = 1u << 3,   // Skyrim precipitation is rain
+		kSkySnowing = 1u << 4,   // Skyrim precipitation is snow
 	};
 
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own
@@ -180,6 +182,7 @@ namespace skycraft::proto
 		kInReleaseAll = 6,   // release every held key/button (input focus left MC)
 		kInHurt = 7,         // Skyrim hit the player: code = HurtKind, a = Skyrim damage * 100, b = attacker FormID, c = HurtFlags
 		kInOpenMenu = 8,     // open Minecraft's pause/options menu
+		kInLootItem = 9,     // Skyrim loot: code = LootCategory, a = item FormID, b = count, c = source ref FormID
 	};
 
 	enum HurtKind : std::uint16_t
