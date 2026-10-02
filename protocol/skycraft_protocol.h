@@ -59,6 +59,8 @@ namespace skycraft::proto
 		kSkyInGame = 1u << 0,    // a save is loaded and the player exists
 		kSkyMenuOpen = 1u << 1,  // a Skyrim menu owns input; MC should drop held keys
 		kSkyLoading = 1u << 2,   // loading screen / cell transition in progress
+		kSkyRaining = 1u << 3,   // Skyrim precipitation is rain
+		kSkySnowing = 1u << 4,   // Skyrim precipitation is snow
 	};
 
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own
