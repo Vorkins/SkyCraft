@@ -531,6 +531,8 @@ public final class SkyDig {
 	public static int classify(int x, int y, int z) {
 		Probe probe = new Probe().around(x, y, z, x + 1, y + 1, z + 1);
 		int inside = 0;
+		int nonWebInside = 0;
+		boolean sawWeb = false;
 		int centreMaterial = DIG_STONE;
 		double centreDepth = Double.POSITIVE_INFINITY;
 		for (double sy : SAMPLE) {
@@ -544,6 +546,11 @@ public final class SkyDig {
 						continue;
 					}
 					inside++;
+					if (r == DIG_WEB) {
+						sawWeb = true;
+					} else {
+						nonWebInside++;
+					}
 					if (sx == 0.5 && sy == 0.5 && sz == 0.5) {
 						centreMaterial = r;
 						centreDepth = probe.depth;
@@ -552,6 +559,11 @@ public final class SkyDig {
 			}
 		}
 		if (inside < WHOLE) {
+			// Skyrim webs are thin geometry and often occupy fewer than 25/27 sample points.
+			// If every solid sample is web, keep the cell mineable instead of treating it as air.
+			if (sawWeb && nonWebInside == 0) {
+				return DIG_WEB;
+			}
 			return AIR;
 		}
 		// Under the land: dirt, stone, then bedrock a few blocks down.
