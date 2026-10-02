@@ -17,6 +17,7 @@ public final class SkyTime {
 	private static final SkyLink.SkyState SKY = new SkyLink.SkyState();
 	private static long lastSyncSeq = -1;
 	private static int lastGeneration = -1;
+	private static int lastWeather = Integer.MIN_VALUE;
 
 	private SkyTime() {
 	}
@@ -55,6 +56,22 @@ public final class SkyTime {
 		for (ServerLevel level : server.getAllLevels()) {
 			syncLevel(level, timeOfDay);
 		}
+		syncWeather(server, SKY.flags);
+	}
+
+	private static void syncWeather(MinecraftServer server, int flags) {
+		int weather = flags & (dev.skycraft.link.Proto.SKY_RAINING | dev.skycraft.link.Proto.SKY_SNOWING);
+		if (weather == lastWeather) {
+			return;
+		}
+		lastWeather = weather;
+		boolean raining = weather != 0;
+		// Skyrim does not expose a universal thunder boolean through SkyState yet. Preserve the
+		// important part (clear vs precipitation) without inventing thunderstorms.
+		server.setWeatherParameters(raining ? 0 : 1200, raining ? 1200 : 0, raining, false);
+		SkyCraft.LOG.info("SkyCraft: Skyrim weather -> Minecraft {}", raining
+			? ((weather & dev.skycraft.link.Proto.SKY_SNOWING) != 0 ? "snow/precipitation" : "rain")
+			: "clear");
 	}
 
 	private static void syncLevel(ServerLevel level, long timeOfDay) {
