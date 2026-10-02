@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 public final class SkyTime {
 	private static final SkyLink.SkyState SKY = new SkyLink.SkyState();
 	private static long lastSyncSeq = -1;
+	private static int lastGeneration = -1;
 
 	private SkyTime() {
 	}
@@ -26,8 +27,13 @@ public final class SkyTime {
 	}
 
 	private static void sync(MinecraftServer server) {
-		if (!SkyLink.readSkyState(SKY) || !SKY.inGame() || SKY.loading()) {
+		if (!SkyLink.active() || !SkyLink.readSkyState(SKY) || !SKY.inGame() || SKY.loading()) {
 			return;
+		}
+		int generation = SkyLink.generation();
+		if (generation != lastGeneration) {
+			lastGeneration = generation;
+			lastSyncSeq = -1;
 		}
 		if (SKY.seq == lastSyncSeq) {
 			return;
