@@ -131,7 +131,7 @@ Minecraft has priority. These keys still go to Skyrim:
 
 | Key | Does |
 |---|---|
-| **G** | Skyrim activate: doors, NPCs (talk), containers, levers, furniture |
+| **G** | Skyrim activate: doors, NPCs (talk), containers, levers, furniture; dead NPCs and lootable containers are transferred to Minecraft inventory |
 | **Esc** | Skyrim menu (or closes an open Minecraft screen) |
 | **J** / **M** | Skyrim journal / map |
 | **H** | Skyrim wait |
@@ -158,7 +158,7 @@ Every other key is Minecraft's: **E** inventory, **F5** camera, **T** chat, **/*
 
 - Skyrim's opening (cart ride and Helgen) may leave you stuck. Use
   [Alternate Start](https://www.nexusmods.com/skyrimspecialedition/mods/272) or a save made after Helgen.
-- Skyrim's inventory, magic, shouts and perks can't be opened while Minecraft drives the player.
+- Skyrim's full inventory, magic, shouts and perks can't be opened while Minecraft drives the player; only the dead-NPC/container loot bridge is exposed.
 - Minecraft hits only reach NPCs, not Skyrim objects such as the web around Arvel in Bleak Falls
   Barrow. There's no in-game switch back to plain Skyrim yet. Closing Minecraft hands control
   back to Skyrim; Minecraft keeps what it last autosaved, every few minutes. Deal with the object,
