@@ -3,6 +3,7 @@ package dev.skycraft.net;
 import dev.skycraft.SkyCraft;
 import dev.skycraft.combat.SkyCombat;
 import dev.skycraft.world.SkyDig;
+import dev.skycraft.world.SkyLoot;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -51,6 +52,25 @@ public final class SkyNet {
 		}
 	}
 
+
+
+	/** Guest -> server: the guest's Skyrim just transferred one inventory stack. */
+	public record Loot(int category, int formId, int count, int sourceFormId) implements CustomPacketPayload {
+		public static final Type<Loot> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "loot"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, Loot> CODEC = StreamCodec.composite(
+			ByteBufCodecs.VAR_INT, Loot::category,
+			ByteBufCodecs.INT, Loot::formId,
+			ByteBufCodecs.VAR_INT, Loot::count,
+			ByteBufCodecs.INT, Loot::sourceFormId,
+			Loot::new
+		);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
 	/** Client -> server: the player hit Skyrim's geometry in this cell (SkyDig.open). */
 	public record DigOpen(int world, BlockPos pos, int material) implements CustomPacketPayload {
 		public static final Type<DigOpen> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "dig_open"));
@@ -86,7 +106,19 @@ public final class SkyNet {
 	public static void init() {
 		PayloadTypeRegistry.serverboundPlay().register(Hurt.TYPE, Hurt.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DigOpen.TYPE, DigOpen.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(Loot.TYPE, Loot.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DigReveal.TYPE, DigReveal.CODEC);
+
+		ServerPlayNetworking.registerGlobalReceiver(Loot.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			int category = Math.max(Proto.LOOT_GOLD, Math.min(Proto.LOOT_MISC, payload.category()));
+			int count = Math.max(0, Math.min(1024, payload.count()));
+			context.server().execute(() -> {
+				if (count > 0) {
+					SkyLoot.receive(player, category, payload.formId(), count);
+				}
+			});
+		});
 		ServerPlayNetworking.registerGlobalReceiver(DigOpen.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			context.server().execute(() -> SkyDig.open(player, payload.world(), payload.pos(), payload.material()));
