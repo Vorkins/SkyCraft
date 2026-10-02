@@ -111,6 +111,11 @@ namespace skycraft
 				if (!object || entry.first <= 0 || sent >= 48) {
 					continue;
 				}
+				// Never consume quest objects from Skyrim. They must remain available to Skyrim's
+				// quests/scripts even after the Minecraft-side loot transfer.
+				if (entry.second && entry.second->IsQuestObject()) {
+					continue;
+				}
 				const int count = std::min(entry.first, 1024);
 				const auto category = LootCategoryFor(object);
 				Link::Get().PushInput(
