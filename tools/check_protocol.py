@@ -75,7 +75,7 @@ def extract_cpp_scalars(text: str) -> dict[str, int]:
 
 def extract_cpp_enums(text: str) -> dict[str, int]:
     out: dict[str, int] = {}
-    enum_re = re.compile(r"\benum(?:\s+class)?\s+\w+\s*\{(.*?)\};", re.DOTALL)
+    enum_re = re.compile(r"\benum(?:\s+class)?\s+\w+(?:\s*:\s*[^\{]+)?\s*\{(.*?)\};", re.DOTALL)
     item_re = re.compile(r"\b(k[A-Za-z0-9_]+)(?:\s*=\s*([^,\n]+))?\s*,?")
     for body in enum_re.findall(text):
         current = -1
