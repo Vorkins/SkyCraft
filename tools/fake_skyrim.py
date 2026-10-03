@@ -94,7 +94,7 @@ class Link:
         name = item["name"].encode("utf-8")[:47] + b"\0"
         name += bytes(48 - len(name))
         return struct.pack(
-            "<12I3f",
+            "<6I3f3I",
             item["form"], item["base"], item["count"], item["flags"],
             item["category"], item["value"], item["weight"],
             item["damage"], item["armor"], item["ench"], item["soul"], 0,
@@ -129,8 +129,8 @@ class Link:
         self.loot_revision = (self.loot_revision + 1) & 0xFFFFFFFF or 1
         title = bytes(32)
         body = struct.pack(
-            "<8I", 0, self.loot_session, self.loot_revision, 0x3C,
-            self.loot_source, 0, 0, 0
+            "<7I", 0, self.loot_session, self.loot_revision, 0x3C,
+            self.loot_source, 0, 0
         ) + title + bytes(96 * 54)
         self.loot_seq += 1
         struct.pack_into("<I", self.m, OFF_LOOT, self.loot_seq * 2 - 1)
