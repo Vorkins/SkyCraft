@@ -91,6 +91,16 @@ public class SkyrimActorEntity extends LivingEntity {
 		if (this.isInvulnerableTo(level, source) || dmg <= 0.0F) {
 			return;
 		}
+		ItemStack weapon = source.getWeaponItem();
+		if (weapon != null && !weapon.isEmpty()) {
+			SkyrimItemComponent skyrim = weapon.get(SkyrimItemComponents.SKYRIM_ITEM);
+			if (skyrim != null && skyrim.damage() > 0.0F) {
+				// Imported Skyrim weapons retain their native base damage. 7.0 is the normal
+				// Minecraft iron-sword attack damage used as the bridge reference, so modifiers
+				// such as crit/sharpness still apply around the imported weapon's scale.
+				dmg *= Math.max(0.25F, Math.min(4.0F, skyrim.damage() / 7.0F));
+			}
+		}
 		this.pendingDamage += dmg;
 		if (source.getDirectEntity() instanceof Projectile) {
 			this.pendingFlags |= Proto.HIT_PROJECTILE;

@@ -108,6 +108,15 @@ namespace skycraft
 		void SetActivatePromptKey(bool a_minecraftControls);
 	}
 
+	namespace Loot
+	{
+		// G on a dead actor/container opens the Minecraft loot screen via a Skyrim-authoritative session.
+		bool OpenTarget(RE::TESObjectREFR* a_target, RE::PlayerCharacter* a_player);
+		// Main-thread transaction pump and snapshot publisher.
+		void PerFrame(RE::PlayerCharacter* a_player, float a_delta);
+		void Close();
+	}
+
 	namespace Combat
 	{
 		void Install();

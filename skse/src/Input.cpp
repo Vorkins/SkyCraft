@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Loot.h"
 
 namespace skycraft
 {
@@ -43,99 +44,6 @@ namespace skycraft
 		constexpr std::uint32_t kDikO = 0x18;        // Minecraft pause / options menu (Esc is Skyrim's)
 		constexpr std::uint32_t kDikF9 = 0x43;       // Skyrim quickload
 
-		enum LootCategory : std::uint16_t
-		{
-			kLootGold = 1,
-			kLootWeapon = 2,
-			kLootArmor = 3,
-			kLootAmmo = 4,
-			kLootPotion = 5,
-			kLootIngredient = 6,
-			kLootBook = 7,
-			kLootKey = 8,
-			kLootSoulGem = 9,
-			kLootMisc = 10
-		};
-
-		std::uint16_t LootCategoryFor(RE::TESBoundObject* a_object)
-		{
-			if (!a_object) {
-				return kLootMisc;
-			}
-			if (a_object->IsGold()) {
-				return kLootGold;
-			}
-			if (a_object->IsAmmo()) {
-				return kLootAmmo;
-			}
-			if (a_object->IsArmor()) {
-				return kLootArmor;
-			}
-			if (a_object->IsBook()) {
-				return kLootBook;
-			}
-			if (a_object->IsKey()) {
-				return kLootKey;
-			}
-			if (a_object->IsSoulGem()) {
-				return kLootSoulGem;
-			}
-			switch (a_object->GetFormType()) {
-			case RE::FormType::Weapon:
-				return kLootWeapon;
-			case RE::FormType::AlchemyItem:
-				return kLootPotion;
-			case RE::FormType::Ingredient:
-				return kLootIngredient;
-			default:
-				return kLootMisc;
-			}
-		}
-
-		bool TryLootTarget(RE::TESObjectREFR* a_target, RE::PlayerCharacter* a_player)
-		{
-			if (!a_target || !a_player || a_target == a_player) {
-				return false;
-			}
-			auto* actor = a_target->As<RE::Actor>();
-			const bool deadActor = actor && actor->IsDead();
-			const bool container = a_target->GetContainer() != nullptr;
-			if (!deadActor && !container) {
-				return false;
-			}
-
-			auto inventory = a_target->GetInventory();
-			int sent = 0;
-			int removed = 0;
-			for (auto& [object, entry] : inventory) {
-				if (!object || entry.first <= 0 || sent >= 48) {
-					continue;
-				}
-				// Never consume quest objects from Skyrim. They must remain available to Skyrim's
-				// quests/scripts even after the Minecraft-side loot transfer.
-				if (entry.second && entry.second->IsQuestObject()) {
-					continue;
-				}
-				const int count = std::min(entry.first, 1024);
-				const auto category = LootCategoryFor(object);
-				Link::Get().PushInput(
-					proto::kInLootItem,
-					category,
-					static_cast<std::int32_t>(object->GetFormID()),
-					count,
-					static_cast<std::int32_t>(a_target->GetFormID()));
-				a_target->RemoveItem(object, count, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
-				sent++;
-				removed += count;
-			}
-			if (sent == 0) {
-				logger::info("loot target {:08X} ({}) is empty", a_target->GetFormID(), a_target->GetDisplayFullName());
-				return true;
-			}
-			logger::info("looted {:08X} ({}) -> {} Skyrim stacks / {} items", a_target->GetFormID(), a_target->GetDisplayFullName(), sent, removed);
-			return true;
-		}
-
 		bool IsSkyrimMenuKey(std::uint32_t a_code)
 		{
 			return a_code == kDikEscape || a_code == kDikConsole || a_code == kDikJ || a_code == kDikM || a_code == kDikF9;
@@ -159,7 +67,7 @@ namespace skycraft
 				logger::info("G: nothing to activate under the crosshair");
 				return;
 			}
-			if (TryLootTarget(target.get(), player)) {
+			if (Loot::OpenTarget(target.get(), player)) {
 				return;
 			}
 			target->ActivateRef(player, 0, nullptr, 0, false);

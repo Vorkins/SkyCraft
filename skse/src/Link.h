@@ -32,6 +32,11 @@ namespace skycraft
 		// Collision ring (producer side, one thread only). Returns false if the ring is full.
 		bool WriteCollision(proto::ColType a_type, const void* a_payload, std::uint32_t a_bytes);
 
+		// Loot state/requests: Skyrim is authoritative for the source inventory.
+		void WriteLootState(const proto::LootState& a_state);
+		bool ReadLootRequest(proto::LootRequest& a_out);
+		void PushLootRequest(const proto::LootRequest& a_request);
+
 		// Actor table (producer, main thread): nearby actors Minecraft mirrors as hittable stand-ins.
 		void WriteActors(const proto::ActorRecord* a_records, std::uint32_t a_count);
 		// Event ring (consumer, main thread). Returns false when empty.

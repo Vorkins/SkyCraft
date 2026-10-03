@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 12;
+	public static final int VERSION = 14;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -35,7 +35,9 @@ public final class Proto {
 	public static final long OFF_WORLD_ENTITIES = 0x1C000;
 	public static final long OFF_RENDER_RING = OFF_OVERLAY_PIXELS + OVERLAY_SLOT_BYTES * OVERLAY_SLOTS;
 	public static final long RENDER_RING_BYTES = 64L << 20;
-	public static final long MAPPING_BYTES = OFF_RENDER_RING + RENDER_RING_BYTES;
+	public static final long OFF_LOOT_STATE = OFF_RENDER_RING + RENDER_RING_BYTES;
+	public static final long OFF_LOOT_REQUEST_RING = OFF_LOOT_STATE + 0x2000;
+	public static final long MAPPING_BYTES = OFF_LOOT_REQUEST_RING + 0x1000;
 
 	// Input types added in v5
 	public static final int IN_HURT = 7;
@@ -113,6 +115,43 @@ public final class Proto {
 	public static final int WE_BLOCK = 4;
 	public static final int WE_CRACK = 5;
 	public static final int WE_SHADOW = 6;
+
+	// Loot state (relative to OFF_LOOT_STATE)
+	public static final int LOOT_MAX_ITEMS = 54;
+	public static final int LOOT_TITLE_BYTES = 32;
+	public static final int LOOT_ITEM_NAME_BYTES = 48;
+	public static final int LOOT_CLOSED = 0;
+	public static final int LOOT_OPEN = 1;
+	public static final int LOOT_STATE_DEAD_ACTOR = 1;
+	public static final int LOOT_STATE_CONTAINER = 1 << 1;
+	public static final int LOOT_ITEM_ENCHANTED = 1;
+	public static final int LOOT_ITEM_FAVORITED = 1 << 1;
+	public static final int LOOT_ITEM_WORN = 1 << 2;
+	public static final int LOOT_ITEM_POISONED = 1 << 3;
+	public static final int LOOT_ITEM_LEVELED = 1 << 4;
+	public static final long LS_SEQ = 0x00;
+	public static final long LS_PHASE = 0x04;
+	public static final long LS_SESSION_ID = 0x08;
+	public static final long LS_REVISION = 0x0C;
+	public static final long LS_WORLD_ID = 0x10;
+	public static final long LS_SOURCE_FORM_ID = 0x14;
+	public static final long LS_COUNT = 0x18;
+	public static final long LS_FLAGS = 0x1C;
+	public static final long LS_TITLE = 0x20;
+	public static final long LS_ITEMS = 0x40;
+	public static final int LOOT_ITEM_BYTES = 96;
+	public static final int LOOT_STATE_BYTES = 0x1480;
+
+	// Loot request ring (relative to OFF_LOOT_REQUEST_RING)
+	public static final int LOOT_REQUEST_RING_ENTRIES = 120;
+	public static final long LR_HEAD = 0x00;
+	public static final long LR_TAIL = 0x40;
+	public static final long LR_DATA = 0x80;
+	public static final long LR_DATA_BYTES = 0xF80;
+	public static final int LOOT_TAKE = 1;
+	public static final int LOOT_TAKE_ALL = 2;
+	public static final int LOOT_CLOSE = 3;
+	public static final int LOOT_REQUEST_BYTES = 32;
 
 	// Render ring (relative to OFF_RENDER_RING)
 	public static final long RR_HEAD = 0x00;

@@ -14,7 +14,7 @@ import time
 import zlib
 
 MAGIC = 0x43594B53
-VERSION = 11
+VERSION = 14
 NAME = os.environ.get("SKYCRAFT_LINK", "Local\\SkyCraft_v1")  # fake_guest.py runs one beside a real Skyrim
 OFF_SKY = 0x100
 OFF_MC = 0x200
@@ -30,7 +30,9 @@ OFF_PIX = OFF_COL + COL_BYTES
 SLOT = 3840 * 2160 * 4
 OFF_RENDER = OFF_PIX + SLOT * 3
 RENDER_BYTES = 64 << 20
-SIZE = OFF_RENDER + RENDER_BYTES
+OFF_LOOT = OFF_RENDER + RENDER_BYTES
+OFF_LOOT_REQ = OFF_LOOT + 0x2000
+SIZE = OFF_LOOT_REQ + 0x1000
 COL_DATA = COL_BYTES - 0x80
 
 W, H = 1280, 720
@@ -58,6 +60,8 @@ class Link:
         self.m[OFF_ACTORS:OFF_ACTORS + 0x40] = bytes(0x40)
         self.m[OFF_EVENTS:OFF_EVENTS + 0x80] = bytes(0x80)
         self.m[OFF_ENTITIES:OFF_ENTITIES + 0x40] = bytes(0x40)
+        self.m[OFF_LOOT:OFF_LOOT + 0x1480] = bytes(0x1480)
+        self.m[OFF_LOOT_REQ:OFF_LOOT_REQ + 0x1000] = bytes(0x1000)
         self.m[OFF_RENDER:OFF_RENDER + 0x80] = bytes(0x80)
         struct.pack_into("<IIII", self.m, 0, MAGIC, VERSION, os.getpid(), 0)
         self.front = 2
@@ -67,11 +71,110 @@ class Link:
         self.events = []
         self.sections = 0
         self.atlas = None
+        self.loot_seq = 0
+        self.loot_session = 0
+        self.loot_revision = 0
+        self.loot_open = False
+        self.loot_source = 0xFF00BEEF
+        self.last_loot_request = 0
+        self.loot_inventory = [
+            dict(form=0x00012EB7, base=0x00012EB7, count=1, flags=0, category=2, value=20, weight=9.0, damage=8.0, armor=0.0, ench=0, soul=0, name="Iron Sword"),
+            dict(form=0x0000000F, base=0x0000000F, count=120, flags=0, category=1, value=1, weight=0.0, damage=0.0, armor=0.0, ench=0, soul=0, name="Gold"),
+            dict(form=0x00003EB2, base=0x00003EB2, count=3, flags=0, category=5, value=50, weight=0.5, damage=0.0, armor=0.0, ench=0, soul=0, name="Potion of Minor Healing"),
+        ]
 
     def heartbeat(self):
         struct.pack_into("<Q", self.m, 0x10, tick())
         self.drain_events()
+        self.drain_loot_requests()
         self.drain_render()
+
+    @staticmethod
+    def _loot_item_bytes(item):
+        name = item["name"].encode("utf-8")[:47] + b"\0"
+        name += bytes(48 - len(name))
+        return struct.pack(
+            "<6I3f3I",
+            item["form"], item["base"], item["count"], item["flags"],
+            item["category"], item["value"], item["weight"],
+            item["damage"], item["armor"], item["ench"], item["soul"], 0,
+        ) + name
+
+    def write_loot_state(self):
+        items = [item for item in self.loot_inventory if item["count"] > 0][:54]
+        title = b"Test Bandit Chest\0" + bytes(32 - len(b"Test Bandit Chest\0"))
+        body = struct.pack(
+            "<8I", 1, self.loot_session, self.loot_revision, 0x3C,
+            self.loot_source, len(items), 2, 0
+        ) + title
+        body += b"".join(self._loot_item_bytes(item) for item in items)
+        body += bytes(96 * (54 - len(items)))
+        self.loot_seq += 1
+        struct.pack_into("<I", self.m, OFF_LOOT, self.loot_seq * 2 - 1)
+        self.m[OFF_LOOT + 4:OFF_LOOT + 0x1480] = body
+        struct.pack_into("<I", self.m, OFF_LOOT, self.loot_seq * 2)
+
+    def open_loot(self):
+        self.loot_session = (self.loot_session + 1) & 0xFFFFFFFF or 1
+        self.loot_revision = 1
+        self.last_loot_request = 0
+        self.loot_open = True
+        print(f"  loot: opened test source {self.loot_source:08X}")
+        self.write_loot_state()
+
+    def close_loot(self):
+        if not self.loot_open:
+            return
+        self.loot_open = False
+        self.loot_revision = (self.loot_revision + 1) & 0xFFFFFFFF or 1
+        title = bytes(32)
+        body = struct.pack(
+            "<7I", 0, self.loot_session, self.loot_revision, 0x3C,
+            self.loot_source, 0, 0
+        ) + title + bytes(96 * 54)
+        self.loot_seq += 1
+        struct.pack_into("<I", self.m, OFF_LOOT, self.loot_seq * 2 - 1)
+        self.m[OFF_LOOT + 4:OFF_LOOT + 0x1480] = body
+        struct.pack_into("<I", self.m, OFF_LOOT, self.loot_seq * 2)
+        print("  loot: closed")
+
+    def drain_loot_requests(self):
+        head = struct.unpack_from("<Q", self.m, OFF_LOOT_REQ)[0]
+        tail = struct.unpack_from("<Q", self.m, OFF_LOOT_REQ + 0x40)[0]
+        if not self.loot_open:
+            if tail < head:
+                struct.pack_into("<Q", self.m, OFF_LOOT_REQ + 0x40, head)
+            return
+        while tail < head:
+            off = OFF_LOOT_REQ + 0x80 + (tail % 120) * 32
+            typ, req_id, session, source, form, base, count, revision = struct.unpack_from("<8I", self.m, off)
+            tail += 1
+            struct.pack_into("<Q", self.m, OFF_LOOT_REQ + 0x40, tail)
+            if req_id == 0 or req_id <= self.last_loot_request:
+                continue
+            self.last_loot_request = req_id
+            if session != self.loot_session or source != self.loot_source or revision > self.loot_revision:
+                continue
+            if typ == 3:
+                self.close_loot()
+                return
+            changed = False
+            if typ == 1:
+                for item in self.loot_inventory:
+                    if item["form"] == form and item["count"] > 0:
+                        take = min(count, item["count"])
+                        item["count"] -= take
+                        changed = take > 0
+                        break
+            elif typ == 2:
+                for item in self.loot_inventory:
+                    if item["count"] > 0:
+                        item["count"] = 0
+                        changed = True
+            if changed:
+                self.loot_revision = (self.loot_revision + 1) & 0xFFFFFFFF or 1
+                print(f"  loot: request {req_id} type={typ} accepted; revision={self.loot_revision}")
+                self.write_loot_state()
 
     def drain_events(self):
         head, tail = struct.unpack_from("<Q", self.m, OFF_EVENTS)[0], struct.unpack_from("<Q", self.m, OFF_EVENTS + 0x40)[0]
@@ -280,6 +383,7 @@ def main():
     last_print = 0
     saved = False
     checked = False
+    loot_checked = 0
     tseq = int(time.time()) % 100000 + 2  # new teleport every run
     while time.time() - start < seconds:
         link.heartbeat()
@@ -300,6 +404,12 @@ def main():
             print("MC in world at", mc["pos"])
         if script_t0 is not None:
             t = time.time() - script_t0
+            if 1.0 <= t < 1.05 and not link.loot_open:
+                link.open_loot()
+                loot_checked = 1
+            if 20.0 <= t < 20.05 and loot_checked == 1 and link.loot_open:
+                link.close_loot()
+                loot_checked = 2
             # A fake NPC two blocks ahead: punch it, then have it hit back.
             link.write_actor(0xFF00ABCD, X0 + 2.5, FLOOR_Y, 0.5)
             for click in (0.8, 1.5):  # the first click only grabs the mouse, like focusing a window
