@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
 
 namespace skycraft::Loot
 {
@@ -168,7 +169,7 @@ namespace skycraft::Loot
 
 			std::uint32_t count = 0;
 			for (auto& [object, entry] : inventory) {
-				if (!object || !entry || entry->first <= 0 || count >= proto::kLootMaxItems) {
+				if (!object || entry.first <= 0 || count >= proto::kLootMaxItems) {
 					continue;
 				}
 				if (entry->second && entry->second->IsQuestObject()) {
@@ -242,7 +243,7 @@ namespace skycraft::Loot
 
 			auto inventory = a_source->GetInventory();
 			for (auto& [object, entry] : inventory) {
-				if (!object || !entry || entry->first <= 0 || object->GetFormID() != a_request.formId) {
+				if (!object || entry.first <= 0 || object->GetFormID() != a_request.formId) {
 					continue;
 				}
 				if (entry->second && entry->second->IsQuestObject()) {
@@ -270,7 +271,7 @@ namespace skycraft::Loot
 			auto inventory = a_source->GetInventory();
 			bool removed = false;
 			for (auto& [object, entry] : inventory) {
-				if (!object || !entry || entry->first <= 0) {
+				if (!object || entry.first <= 0) {
 					continue;
 				}
 				if (entry->second && entry->second->IsQuestObject()) {
