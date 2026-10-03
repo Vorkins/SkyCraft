@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 12;
+	inline constexpr std::uint32_t kVersion = 13;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -37,6 +37,8 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kOffActorTable = 0x12000;   // Skyrim -> MC, see ActorTable
 	inline constexpr std::uint64_t kOffEventRing = 0x17000;    // MC -> Skyrim, see McEvent
 	inline constexpr std::uint64_t kOffWorldEntities = 0x1C000;  // MC -> Skyrim, see WorldEntities
+	inline constexpr std::uint64_t kOffLootState = 0x1D000;      // Skyrim -> MC, authoritative loot snapshot
+	inline constexpr std::uint64_t kOffLootRequestRing = 0x1F000; // MC -> Skyrim, loot transactions
 	inline constexpr std::uint64_t kOffRenderRing = kOffOverlayPixels + kOverlaySlotBytes * kOverlaySlots;
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
 	inline constexpr std::uint64_t kMappingBytes = kOffRenderRing + kRenderRingBytes;
@@ -320,6 +322,94 @@ namespace skycraft::proto
 	};
 	static_assert(sizeof(WorldEntities) == 0x40 + sizeof(WorldEntity) * kMaxWorldEntities);
 	static_assert(kOffWorldEntities + sizeof(WorldEntities) <= kOffCollisionRing);
+
+
+	// ---- loot state @0x1D000 (Skyrim -> MC, seqlock) ------------------------------------------
+	inline constexpr std::uint32_t kLootMaxItems = 54;  // six Minecraft chest rows
+	inline constexpr std::uint32_t kLootTitleBytes = 32;
+	inline constexpr std::uint32_t kLootItemNameBytes = 48;
+
+	enum LootPhase : std::uint32_t
+	{
+		kLootClosed = 0,
+		kLootOpen = 1,
+	};
+
+	enum LootStateFlags : std::uint32_t
+	{
+		kLootStateNone = 0,
+		kLootStateDeadActor = 1u << 0,
+		kLootStateContainer = 1u << 1,
+	};
+
+	enum LootItemFlags : std::uint32_t
+{
+		kLootItemEnchanted = 1u << 0,
+		kLootItemFavorited = 1u << 1,
+		kLootItemWorn = 1u << 2,
+		kLootItemPoisoned = 1u << 3,
+		kLootItemLeveled = 1u << 4,
+};
+
+	struct LootItem
+	{
+		std::uint32_t formId;
+		std::uint32_t baseFormId;
+		std::uint32_t count;
+		std::uint32_t flags;          // LootItemFlags
+		std::uint32_t category;       // LootCategory
+		std::uint32_t value;
+		float         weight;
+		float         damage;
+		float         armor;
+		std::uint32_t enchantmentFormId;
+		std::uint32_t soulLevel;
+		std::uint32_t reserved;
+		char          name[kLootItemNameBytes];
+	};
+	static_assert(sizeof(LootItem) == 96);
+
+	struct LootState
+	{
+		std::uint32_t seq;
+		std::uint32_t phase;          // LootPhase
+		std::uint32_t sessionId;      // changes every time G opens a source
+		std::uint32_t revision;       // increments after every accepted transaction
+		std::uint32_t worldId;        // current Skyrim world/cell identity
+		std::uint32_t sourceFormId;   // corpse/container reference
+		std::uint32_t count;           // valid entries in items[]
+		std::uint32_t flags;           // LootStateFlags
+		char          title[kLootTitleBytes];
+		LootItem      items[kLootMaxItems];
+	};
+	static_assert(sizeof(LootState) == 0x1480);
+
+	// ---- loot request ring @0x1F000 (MC -> Skyrim) --------------------------------------------
+	inline constexpr std::uint32_t kLootRequestRingEntries = 120;
+	inline constexpr std::uint64_t kLootRequestRingHeadOff = 0x00;
+	inline constexpr std::uint64_t kLootRequestRingTailOff = 0x40;
+	inline constexpr std::uint64_t kLootRequestRingDataOff = 0x80;
+	inline constexpr std::uint64_t kLootRequestRingDataBytes = 0xF80; // 120 * 32
+
+	enum LootRequestType : std::uint32_t
+	{
+		kLootTake = 1,
+		kLootTakeAll = 2,
+		kLootClose = 3,
+	};
+
+	struct LootRequest
+	{
+		std::uint32_t type;        // LootRequestType
+		std::uint32_t requestId;   // unique within a live loot session
+		std::uint32_t sessionId;
+		std::uint32_t sourceFormId;
+		std::uint32_t formId;
+		std::uint32_t baseFormId;
+		std::uint32_t count;
+		std::uint32_t revision;
+	};
+	static_assert(sizeof(LootRequest) == 32);
 
 	// ---- render ring (MC -> Skyrim) -----------------------------------------------------------
 	// Byte ring like the collision ring. Minecraft ships its own block meshes (built by Minecraft's
