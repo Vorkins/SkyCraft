@@ -2,77 +2,127 @@ package dev.skycraft.world;
 
 import dev.skycraft.SkyCraft;
 import dev.skycraft.link.Proto;
-import net.minecraft.core.component.DataComponents;
+import dev.skycraft.link.SkyLink;
+import dev.skycraft.net.SkyNet;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.Prediction;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.SimpleContainer;
 
 /**
- * Converts Skyrim inventory entries into useful Minecraft items.
+ * Server-side Skyrim loot UI coordinator.
  *
- * Skyrim keeps ownership of the source inventory: the Skyrim side removes the original stack before
- * sending this event, so a corpse or container cannot be looted twice. The Minecraft item is an
- * intentionally semantic translation rather than a byte-for-byte recreation of every Skyrim item.
+ * <p>The server mirrors the local Skyrim snapshot into a normal Minecraft chest screen. The
+ * displayed stacks are never themselves authoritative: every extraction becomes a Skyrim
+ * transaction and the next shared-memory snapshot replaces the display.</p>
  */
 public final class SkyLoot {
-	private static final int MAX_PER_EVENT = 1024;
-
 	private SkyLoot() {
 	}
 
-	/**
-	 * Inserts one Skyrim inventory stack into the player's Minecraft inventory. The source FormID is
-	 * retained in the custom display name so different Skyrim items do not become indistinguishable.
-	 */
-	public static void receive(ServerPlayer player, int category, int formId, int count) {
-		if (player == null || count <= 0 || count > MAX_PER_EVENT) {
+	public static void init() {
+		SkyrimItemComponents.init();
+	}
+
+	public static void applySnapshot(ServerPlayer player, SkyNet.LootState snapshot) {
+		if (player == null || snapshot == null) {
+			return;
+		}
+		if (snapshot.items() == null || snapshot.items().size() > Proto.LOOT_MAX_ITEMS) {
 			return;
 		}
 
-		Item item = itemFor(category, formId);
-		int remaining = count;
-		int inserted = 0;
-		while (remaining > 0) {
-			int amount = Math.min(remaining, item.getDefaultMaxStackSize());
-			ItemStack stack = new ItemStack(item, amount);
-			stack.set(DataComponents.CUSTOM_NAME, Component.literal("Skyrim loot #" + String.format("%08X", formId)));
-			if (!player.getInventory().add(stack)) {
-				player.drop(stack, false, Prediction.PREDICTED);
+		if (snapshot.phase() == Proto.LOOT_CLOSED) {
+			if (player.containerMenu instanceof SkyLootMenu menu &&
+				menu.sessionId() == snapshot.sessionId() &&
+				menu.sourceFormId() == snapshot.sourceFormId()) {
+				menu.closeFromSkyrim();
 			}
-			remaining -= amount;
-			inserted += amount;
+			return;
 		}
 
-		SkyCraft.LOG.info("SkyCraft: imported {} Skyrim loot (form {:08X}, category {}) for {}", inserted, formId, category,
-			player.getName().getString());
+		if (snapshot.phase() != Proto.LOOT_OPEN || snapshot.sessionId() == 0 || snapshot.sourceFormId() == 0) {
+			return;
+		}
+
+		if (player.containerMenu instanceof SkyLootMenu menu) {
+			if (!menu.matches(snapshot)) {
+				menu.closeFromSkyrim();
+			} else if (snapshot.revision() >= menu.revision()) {
+				menu.applySnapshot(snapshot, true);
+				return;
+			} else {
+				return;
+			}
+		}
+
+		open(player, snapshot);
 	}
 
-	private static Item itemFor(int category, int formId) {
-		// Skyrim's two universally recognizable stack IDs.
-		if (formId == 0x0000000F) { // Gold
-			return Items.GOLD_NUGGET;
-		}
-		if (formId == 0x0000000A) { // Lockpick
-			return Items.TRIPWIRE_HOOK;
-		}
-		if (formId == 0x0001D4EC) { // Torch
-			return Items.TORCH;
+	private static void open(ServerPlayer player, SkyNet.LootState snapshot) {
+		var container = new SimpleContainer(Proto.LOOT_MAX_ITEMS);
+		var provider = new net.minecraft.world.MenuProvider() {
+			@Override
+			public Component getDisplayName() {
+				String title = snapshot.title() == null || snapshot.title().isBlank()
+					? "Skyrim Loot"
+					: snapshot.title();
+				return Component.literal(title);
+			}
+
+			@Override
+			public net.minecraft.world.inventory.AbstractContainerMenu createMenu(
+				int containerId,
+				net.minecraft.world.entity.player.Inventory inventory,
+				net.minecraft.world.entity.player.Player playerEntity
+			) {
+				return new SkyLootMenu(containerId, inventory, container, snapshot);
+			}
+		};
+		player.openMenu(provider);
+		SkyCraft.LOG.info("SkyCraft: opened Skyrim loot UI for {} (source {:08X}, session {}, revision {})",
+			player.getName().getString(), snapshot.sourceFormId(), snapshot.sessionId(), snapshot.revision());
+	}
+
+	/**
+	 * Called only by the authoritative server-side loot menu. A host writes directly into its local
+	 * Skyrim mapping; a guest gets the same request forwarded to its own client, which writes its
+	 * local mapping.
+	 */
+	public static boolean dispatchServerRequest(ServerPlayer player, SkyLootMenu menu, SkyNet.LootRequest request) {
+		if (player == null || menu == null || request == null || player.containerMenu != menu || !menu.acceptsRequest(request)) {
+			return false;
 		}
 
-		return switch (category) {
-			case Proto.LOOT_GOLD -> Items.GOLD_NUGGET;
-			case Proto.LOOT_WEAPON -> Items.IRON_SWORD;
-			case Proto.LOOT_ARMOR -> Items.IRON_CHESTPLATE;
-			case Proto.LOOT_AMMO -> Items.ARROW;
-			case Proto.LOOT_POTION -> Items.POTION;
-			case Proto.LOOT_INGREDIENT -> Items.WHEAT;
-			case Proto.LOOT_BOOK -> Items.BOOK;
-			case Proto.LOOT_KEY -> Items.TRIPWIRE_HOOK;
-			case Proto.LOOT_SOUL_GEM -> Items.AMETHYST_SHARD;
-			default -> Items.GOLD_NUGGET;
-		};
+		if (SkyNet.isHost(player)) {
+			SkyLink.pushLootRequest(
+				request.type(), request.requestId(), request.sessionId(), request.sourceFormId(),
+				request.formId(), request.baseFormId(), request.count(), request.revision()
+			);
+			return true;
+		}
+
+		if (ServerPlayNetworking.canSend(player, SkyNet.LootRequest.TYPE)) {
+			ServerPlayNetworking.send(player, request);
+			return true;
+		}
+		return false;
+	}
+
+	public static void dispatchClose(ServerPlayer player, SkyLootMenu menu) {
+		if (player == null || menu == null || player.containerMenu != menu) {
+			return;
+		}
+		var request = new SkyNet.LootRequest(
+			Proto.LOOT_CLOSE,
+			menu.nextRequestId(),
+			menu.sessionId(),
+			menu.sourceFormId(),
+			0,
+			0,
+			0,
+			menu.revision()
+		);
+		dispatchServerRequest(player, menu, request);
 	}
 }
