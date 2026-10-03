@@ -1,9 +1,7 @@
 package dev.skycraft.world;
 
-import dev.skycraft.SkyCraft;
 import dev.skycraft.link.Proto;
 import dev.skycraft.net.SkyNet;
-import java.util.Optional;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
@@ -79,7 +77,7 @@ public final class SkyLootMenu extends AbstractContainerMenu {
 	public boolean acceptsRequest(SkyNet.LootRequest request) {
 		return request.sessionId() == sessionId
 			&& request.sourceFormId() == sourceFormId
-			&& request.revision() == revision;
+			&& request.revision() <= revision;
 	}
 
 	public void applySnapshot(SkyNet.LootState snapshot, boolean broadcast) {
