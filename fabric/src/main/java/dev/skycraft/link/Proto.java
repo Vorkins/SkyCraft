@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 13;
+	public static final int VERSION = 14;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -33,11 +33,11 @@ public final class Proto {
 	public static final long OFF_ACTOR_TABLE = 0x12000;
 	public static final long OFF_EVENT_RING = 0x17000;
 	public static final long OFF_WORLD_ENTITIES = 0x1C000;
-	public static final long OFF_LOOT_STATE = 0x1D000;
-	public static final long OFF_LOOT_REQUEST_RING = 0x1F000;
 	public static final long OFF_RENDER_RING = OFF_OVERLAY_PIXELS + OVERLAY_SLOT_BYTES * OVERLAY_SLOTS;
 	public static final long RENDER_RING_BYTES = 64L << 20;
-	public static final long MAPPING_BYTES = OFF_RENDER_RING + RENDER_RING_BYTES;
+	public static final long OFF_LOOT_STATE = OFF_RENDER_RING + RENDER_RING_BYTES;
+	public static final long OFF_LOOT_REQUEST_RING = OFF_LOOT_STATE + 0x2000;
+	public static final long MAPPING_BYTES = OFF_LOOT_REQUEST_RING + 0x1000;
 
 	// Input types added in v5
 	public static final int IN_HURT = 7;
@@ -140,6 +140,7 @@ public final class Proto {
 	public static final long LS_TITLE = 0x20;
 	public static final long LS_ITEMS = 0x40;
 	public static final int LOOT_ITEM_BYTES = 96;
+	public static final int LOOT_STATE_BYTES = 0x1480;
 
 	// Loot request ring (relative to OFF_LOOT_REQUEST_RING)
 	public static final int LOOT_REQUEST_RING_ENTRIES = 120;
