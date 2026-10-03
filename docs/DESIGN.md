@@ -152,20 +152,20 @@ For every Skyrim actor within ~64 blocks, the MC server spawns a `skycraft:actor
 
 ### 8.3 Loot bridge
 
-The **G** activation route first checks whether the Skyrim crosshair target is a dead actor or a container. If so, Skyrim enumerates its inventory and sends each non-quest stack over the input ring. Skyrim removes the transferred stack from its source; Minecraft creates a semantic equivalent item and preserves the source FormID in the display name. Quest objects remain in Skyrim.
+The **G** activation route first checks whether the Skyrim crosshair target is a dead actor or a container. It opens a real Minecraft **6-row generic chest UI** backed by a read-only server-side loot container.
 
-For multiplayer guests, the same event is forwarded from the guest client to the host server, where it is applied to that guest's Minecraft inventory.
+The ownership boundary is strict:
 
-This is intentionally a translation layer, not a full Skyrim item serializer. Enchantments, soul data, tempering, unique names and other extra data are not yet reproduced as Minecraft item components.
+- **Skyrim owns the source inventory.** A loot session has a sessionId, source FormID, world/cell identity and monotonically increasing revision.
+- **Minecraft owns only the presentation.** The top 54 slots are display slots; they cannot be extracted through normal container mechanics.
+- A click becomes LootTake, LootTakeAll or LootClose. Skyrim validates the session/source/request ID and current inventory, skips quest objects, and performs the actual RemoveItem.
+- Minecraft creates the resulting ItemStack **only after a later Skyrim snapshot proves that the requested amount disappeared**. If the request is rejected or stale, no item is created.
+- A pending transaction survives closing the GUI, so pressing Esc immediately after clicking cannot cause an item to disappear without reaching Minecraft.
+- Multiplayer guests keep the same authority model: their local Skyrim sends snapshots to the host server for display, and the host forwards loot requests back to the guest's local Skyrim.
 
-### 8.4 An NPC hits you
+Imported items carry a persistent skycraft:skyrim_item data component containing FormID/base FormID, category, value, weight, base damage, armor, enchantment FormID, soul level and Skyrim inventory flags. The display name is Skyrim's own item name. The Minecraft base item is a semantic stand-in (for example sword, bow, shield, potion, book or gold), while the Skyrim metadata remains attached for future exact item behavior.
 
-1. Skyrim's hit on the player puppet (melee, arrow, spell) is caught in a hook and **cancelled on the Skyrim side**.
-2. The plugin sends `PlayerHurt {amount, type, sourceFormId, direction}`.
-3. MC applies `player.hurt()` with custom damage types (`skycraft:skyrim_melee`, `skyrim_arrow`, `skyrim_magic`). Armor, Protection, shields and blocking, totems, i-frames and knockback are all vanilla MC.
-4. **MC health is authoritative.** Skyrim's player health is mirrored as a fraction so NPC behaviour (fleeing, finishers) still reads sensibly.
-   - MC death means the Skyrim player is killed, and Skyrim's normal death/reload flow runs.
-   - Fall damage is MC's own.
+This is deliberately the foundation for a later exact item adapter, not a claim that every Skyrim enchantment or tempering effect has already been reproduced in Minecraft.
 
 ## 9. Rendering
 
