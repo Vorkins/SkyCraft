@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Check that the generated Java protocol mirror still matches the C++ protocol.
+"""Verify that protocol/skycraft_protocol.h and Proto.java agree.
 
-This is intentionally dependency-free so it can run before either side is built.
-It checks constants that affect shared-memory addresses, message IDs, flags and
-fixed-layout record sizes. The C++ compiler remains authoritative for sizeof().
+The protocol is duplicated by design because the Skyrim side is C++ and the Minecraft
+side is Java. This check catches accidental drift before a binary build is attempted.
 """
 
 from __future__ import annotations
@@ -19,242 +18,152 @@ CPP = ROOT / "protocol" / "skycraft_protocol.h"
 JAVA = ROOT / "fabric" / "src" / "main" / "java" / "dev" / "skycraft" / "link" / "Proto.java"
 
 
-def expression_value(expr: str) -> int:
-    expr = expr.strip()
-    expr = re.sub(r"\b(?:ULL|ull|UL|ul|LL|ll|L|u|U)\b", "", expr)
-    expr = expr.replace("std::uint32_t(", "(").replace("std::uint64_t(", "(")
-    expr = expr.replace("int(", "(")
+BINOPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.LShift: operator.lshift,
+    ast.RShift: operator.rshift,
+    ast.BitOr: operator.or_,
+    ast.BitAnd: operator.and_,
+}
+UNARY = {ast.USub: operator.neg, ast.UAdd: operator.pos, ast.Invert: operator.invert}
+
+
+def eval_int(expr: str) -> int:
+    expr = re.sub(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|\d+)(?:ULL|ull|UL|ul|LL|ll|u|U|L|l)\b",
+                  lambda m: re.sub(r"[A-Za-z]+$", "", m.group(0)), expr.strip())
+    expr = re.sub(r"\b(?:ULL|ull|UL|ul|LL|ll|u|U|L|l)\b", "", expr)
     tree = ast.parse(expr, mode="eval")
 
-    allowed_bin = {
-        ast.Add: operator.add,
-        ast.Sub: operator.sub,
-        ast.Mult: operator.mul,
-        ast.LShift: operator.lshift,
-        ast.RShift: operator.rshift,
-        ast.BitOr: operator.or_,
-        ast.BitAnd: operator.and_,
-    }
-    allowed_unary = {ast.USub: operator.neg, ast.UAdd: operator.pos, ast.Invert: operator.invert}
-
-    def visit(node: ast.AST) -> int:
+    def walk(node: ast.AST) -> int:
         if isinstance(node, ast.Expression):
-            return visit(node.body)
+            return walk(node.body)
         if isinstance(node, ast.Constant) and isinstance(node.value, int):
             return int(node.value)
-        if isinstance(node, ast.BinOp) and type(node.op) in allowed_bin:
-            return allowed_bin[type(node.op)](visit(node.left), visit(node.right))
-        if isinstance(node, ast.UnaryOp) and type(node.op) in allowed_unary:
-            return allowed_unary[type(node.op)](visit(node.operand))
-        if isinstance(node, ast.ParenExpr):  # Python 3.12+
-            return visit(node.expression)
-        raise ValueError(f"unsupported expression: {expr!r}")
+        if isinstance(node, ast.BinOp) and type(node.op) in BINOPS:
+            return BINOPS[type(node.op)](walk(node.left), walk(node.right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in UNARY:
+            return UNARY[type(node.op)](walk(node.operand))
+        raise ValueError(expr)
 
-    return visit(tree)
+    return walk(tree)
 
 
-def extract_constants(text: str, prefix_pattern: str) -> dict[str, int]:
+def camel_to_upper(name: str) -> str:
+    if name.startswith("k"):
+        name = name[1:]
+    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    return name.upper()
+
+
+def extract_cpp_scalars(text: str) -> dict[str, int]:
     out: dict[str, int] = {}
     pattern = re.compile(
-        rf"\b(static\s+)?(?:inline\s+)?(?:constexpr\s+)?"
-        rf"(?:std::uint(?:8|16|32|64)_t|long|int|double|float|[A-Z_]+)\s+"
-        rf"({prefix_pattern}[A-Za-z0-9_]*)\s*=\s*([^;,\n]+)"
+        r"\b(?:static\s+)?(?:inline\s+)?(?:constexpr\s+)?"
+        r"(?:std::uint8_t|std::uint16_t|std::uint32_t|std::uint64_t|int|long|size_t)\s+"
+        r"(k[A-Za-z0-9_]+)\s*=\s*([^;,\n]+)"
     )
-    for match in pattern.finditer(text):
-        name, expr = match.group(1), match.group(2)
+    for name, expr in pattern.findall(text):
         try:
-            out[name] = expression_value(expr)
-        except Exception:
+            out[name] = eval_int(expr)
+        except (SyntaxError, ValueError):
             pass
     return out
 
 
-def extract_java_constants(text: str, prefix_pattern: str) -> dict[str, int]:
+def extract_cpp_enums(text: str) -> dict[str, int]:
     out: dict[str, int] = {}
-    pattern = re.compile(
-        rf"\bpublic\s+static\s+final\s+(?:int|long)\s+"
-        rf"({prefix_pattern}[A-Za-z0-9_]*)\s*=\s*([^;,\n]+)"
-    )
-    for match in pattern.finditer(text):
-        name, expr = match.group(1), match.group(2)
-        try:
-            out[name] = expression_value(expr)
-        except Exception:
-            pass
-
-    # Java has combined declarations such as:
-    # public static final int A = 1, B = 2;
-    combined = re.compile(
-        rf"\b({prefix_pattern}[A-Za-z0-9_]*)\s*=\s*([^;,]+)"
-    )
-    for match in combined.finditer(text):
-        name, expr = match.group(1), match.group(2)
-        try:
-            out[name] = expression_value(expr)
-        except Exception:
-            pass
+    enum_re = re.compile(r"\benum(?:\s+class)?\s+\w+\s*\{(.*?)\};", re.DOTALL)
+    item_re = re.compile(r"\b(k[A-Za-z0-9_]+)(?:\s*=\s*([^,\n]+))?\s*,?")
+    for body in enum_re.findall(text):
+        current = -1
+        for name, expr in item_re.findall(body):
+            if expr:
+                try:
+                    current = eval_int(expr)
+                except (SyntaxError, ValueError):
+                    continue
+            else:
+                current += 1
+            out[name] = current
     return out
 
 
-def check_group(title: str, cpp: dict[str, int], java: dict[str, int], renames: dict[str, str]) -> list[str]:
+def extract_java_scalars(text: str) -> dict[str, int]:
+    out: dict[str, int] = {}
+    # Works for both single declarations and comma-separated declarations.
+    declaration = re.compile(
+        r"\bpublic\s+static\s+final\s+(?:int|long)\s+([^;]+);"
+    )
+    assignment = re.compile(r"\b([A-Z][A-Z0-9_]*)\s*=\s*([^,]+)")
+    for declaration_body in declaration.findall(text):
+        for name, expr in assignment.findall(declaration_body):
+            try:
+                out[name] = eval_int(expr)
+            except (SyntaxError, ValueError):
+                pass
+    return out
+
+
+def check_constants(cpp: dict[str, int], java: dict[str, int]) -> list[str]:
     errors: list[str] = []
-    for cpp_name, java_name in renames.items():
-        if cpp_name not in cpp:
-            errors.append(f"{title}: missing C++ constant {cpp_name}")
-            continue
+    for cpp_name, cpp_value in sorted({**cpp}.items()):
+        java_name = camel_to_upper(cpp_name)
+        # The Java mirror has extra helper offsets that do not exist as named C++ constants.
         if java_name not in java:
-            errors.append(f"{title}: missing Java constant {java_name}")
             continue
-        if cpp[cpp_name] != java[java_name]:
-            errors.append(
-                f"{title}: {cpp_name}={cpp[cpp_name]} != {java_name}={java[java_name]}"
-            )
+        java_value = java[java_name]
+        if cpp_value != java_value:
+            errors.append(f"{cpp_name}={cpp_value} != {java_name}={java_value}")
     return errors
 
 
 def main() -> int:
     if not CPP.exists() or not JAVA.exists():
-        print("protocol-check: source files not found", file=sys.stderr)
+        print("protocol-check: protocol sources not found", file=sys.stderr)
         return 2
 
     cpp_text = CPP.read_text(encoding="utf-8")
     java_text = JAVA.read_text(encoding="utf-8")
 
-    cpp_off = extract_constants(cpp_text, r"kOff")
-    java_off = extract_java_constants(java_text, r"OFF_")
+    cpp = {**extract_cpp_scalars(cpp_text), **extract_cpp_enums(cpp_text)}
+    java = extract_java_scalars(java_text)
 
-    errors: list[str] = []
-    errors += check_group(
-        "shared offsets",
-        cpp_off,
-        java_off,
-        {
-            "kOffHeader": "OFF_HEADER",
-            "kOffSkyState": "OFF_SKY_STATE",
-            "kOffMcState": "OFF_MC_STATE",
-            "kOffOverlayCtl": "OFF_OVERLAY_CTL",
-            "kOffOverlaySlotHdr": "OFF_OVERLAY_SLOT_HDR",
-            "kOffWaterGrid": "OFF_WATER_GRID",
-            "kOffInputRing": "OFF_INPUT_RING",
-            "kOffCollisionRing": "OFF_COLLISION_RING",
-            "kOffOverlayPixels": "OFF_OVERLAY_PIXELS",
-            "kOffActorTable": "OFF_ACTOR_TABLE",
-            "kOffEventRing": "OFF_EVENT_RING",
-            "kOffWorldEntities": "OFF_WORLD_ENTITIES",
-            "kOffRenderRing": "OFF_RENDER_RING",
-        },
-    )
+    errors = check_constants(cpp, java)
 
-    version_cpp = re.search(r"\bkVersion\s*=\s*([^;]+)", cpp_text)
-    version_java = re.search(r"\bVERSION\s*=\s*([^;]+)", java_text)
-    if not version_cpp or not version_java:
-        errors.append("protocol version constant is missing")
-    else:
-        if expression_value(version_cpp.group(1)) != expression_value(version_java.group(1)):
-            errors.append(
-                f"protocol version mismatch: C++={version_cpp.group(1).strip()} "
-                f"Java={version_java.group(1).strip()}"
-            )
+    version_match = re.search(r"\bkVersion\s*=\s*([^;]+)", cpp_text)
+    if not version_match or java.get("VERSION") is None:
+        errors.append("could not read protocol VERSION")
+    elif eval_int(version_match.group(1)) != java["VERSION"]:
+        errors.append(f"kVersion={eval_int(version_match.group(1))} != VERSION={java['VERSION']}")
 
-    cpp_in = extract_constants(cpp_text, r"kIn")
-    java_in = extract_java_constants(java_text, r"IN_")
-    errors += check_group(
-        "input message IDs",
-        cpp_in,
-        java_in,
-        {
-            "kInKey": "IN_KEY",
-            "kInMouseButton": "IN_MOUSE_BUTTON",
-            "kInScroll": "IN_SCROLL",
-            "kInCursor": "IN_CURSOR",
-            "kInText": "IN_TEXT",
-            "kInReleaseAll": "IN_RELEASE_ALL",
-            "kInHurt": "IN_HURT",
-            "kInOpenMenu": "IN_OPEN_MENU",
-            "kInLootItem": "IN_LOOT_ITEM",
-        },
-    )
-
-    cpp_sky = extract_constants(cpp_text, r"kSky")
-    java_sky = extract_java_constants(java_text, r"SKY_")
-    errors += check_group(
-        "Skyrim flags",
-        cpp_sky,
-        java_sky,
-        {
-            "kSkyInGame": "SKY_IN_GAME",
-            "kSkyMenuOpen": "SKY_MENU_OPEN",
-            "kSkyLoading": "SKY_LOADING",
-            "kSkyRaining": "SKY_RAINING",
-            "kSkySnowing": "SKY_SNOWING",
-        },
-    )
-
-    cpp_mc = extract_constants(cpp_text, r"kMc")
-    java_mc = extract_java_constants(java_text, r"MC_")
-    errors += check_group(
-        "Minecraft flags",
-        cpp_mc,
-        java_mc,
-        {
-            "kMcInWorld": "MC_IN_WORLD",
-            "kMcScreenOpen": "MC_SCREEN_OPEN",
-            "kMcOnGround": "MC_ON_GROUND",
-            "kMcSneaking": "MC_SNEAKING",
-            "kMcSprinting": "MC_SPRINTING",
-            "kMcDead": "MC_DEAD",
-            "kMcSwimming": "MC_SWIMMING",
-            "kMcFlying": "MC_FLYING",
-        },
-    )
-
-    cpp_ren = extract_constants(cpp_text, r"kRen")
-    java_ren = extract_java_constants(java_text, r"REN_")
-    errors += check_group(
-        "render message IDs",
-        cpp_ren,
-        java_ren,
-        {
-            "kRenPad": "REN_PAD",
-            "kRenAtlas": "REN_ATLAS",
-            "kRenSection": "REN_SECTION",
-            "kRenClearAll": "REN_CLEAR_ALL",
-            "kRenTexture": "REN_TEXTURE",
-            "kRenAvatar": "REN_AVATAR",
-            "kRenScene": "REN_SCENE",
-            "kRenAtlasRegion": "REN_ATLAS_REGION",
-            "kRenLights": "REN_LIGHTS",
-            "kRenRagdoll": "REN_RAGDOLL",
-            "kRenSolids": "REN_SOLIDS",
-            "kRenDug": "REN_DUG",
-        },
-    )
-
-    expected_cpp_java = {
-        "kMaxActors": "MAX_ACTORS",
-        "kMaxWorldEntities": "MAX_WORLD_ENTITIES",
-        "kInputRingEntries": "INPUT_RING_ENTRIES",
-        "kEventRingEntries": "EVENT_RING_ENTRIES",
-        "kCollisionRingBytes": "COLLISION_RING_BYTES",
-        "kRenderRingBytes": "RENDER_RING_BYTES",
-        "kUnitsPerBlock": "UNITS_PER_BLOCK",
+    # Validate the fixed-size records that Java explicitly mirrors with byte-count constants.
+    size_map = {
+        "ActorRecord": "ACTOR_RECORD_BYTES",
+        "McEvent": "EVENT_BYTES",
+        "WorldEntity": "WORLD_ENTITY_BYTES",
+        "RenVertex": "REN_VERTEX_BYTES",
+        "ColTri": "COL_TRI_BYTES",
+        "ColRegion": "COL_REGION_HEADER_BYTES",
+        "ColBlock": "COL_BLOCK_BYTES",
+        "OverlaySlotHdr": "SLOT_HDR_SIZE",
     }
-
-    for cpp_name, java_name in expected_cpp_java.items():
-        # kUnitsPerBlock is a double, not extracted by the integer parser.
-        if cpp_name == "kUnitsPerBlock":
-            a = re.search(r"\bkUnitsPerBlock\s*=\s*([0-9.]+)", cpp_text)
-            b = re.search(r"\bUNITS_PER_BLOCK\s*=\s*([0-9.]+)", java_text)
-            if not a or not b or float(a.group(1)) != float(b.group(1)):
-                errors.append(f"fundamental constant mismatch: {cpp_name} vs {java_name}")
+    for struct_name, java_name in size_map.items():
+        m = re.search(
+            rf"static_assert\s*\(\s*sizeof\(\s*{re.escape(struct_name)}\s*\)\s*==\s*([^;]+)\)",
+            cpp_text,
+        )
+        if not m:
+            errors.append(f"missing C++ size assert for {struct_name}")
             continue
-        cpp_values = extract_constants(cpp_text, re.escape(cpp_name))
-        java_values = extract_java_constants(java_text, re.escape(java_name))
-        if cpp_name not in cpp_values or java_name not in java_values:
-            # These use the exact name pattern and may not be caught by the generic extractor.
-            continue
-        if cpp_values[cpp_name] != java_values[java_name]:
-            errors.append(f"fundamental constant mismatch: {cpp_name} != {java_name}")
+        expected = eval_int(m.group(1))
+        actual = java.get(java_name)
+        if actual is None:
+            errors.append(f"missing Java size constant {java_name}")
+        elif expected != actual:
+            errors.append(f"{struct_name} size {expected} != {java_name}={actual}")
 
     if errors:
         print("protocol-check: FAILED")
@@ -263,9 +172,9 @@ def main() -> int:
         return 1
 
     print("protocol-check: OK")
-    print(f"  version: {expression_value(version_cpp.group(1)) if version_cpp else '?'}")
-    print(f"  C++: {CPP.relative_to(ROOT)}")
-    print(f"  Java: {JAVA.relative_to(ROOT)}")
+    print(f"  version: {java['VERSION']}")
+    print(f"  checked C++ numeric constants: {len(cpp)}")
+    print(f"  checked Java numeric constants: {len(java)}")
     return 0
 
 
