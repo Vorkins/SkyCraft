@@ -172,7 +172,7 @@ namespace skycraft::Loot
 				if (!object || entry.first <= 0 || count >= proto::kLootMaxItems) {
 					continue;
 				}
-				if (entry->second && entry->second->IsQuestObject()) {
+				if (entry.second && entry.second->IsQuestObject()) {
 					continue;
 				}
 				FillItem(next.items[count], object, entry->second, entry->first);
@@ -189,26 +189,9 @@ namespace skycraft::Loot
 				}
 			}
 
-			next.revision = a_forceRevision ? revision : revision + 1;
+			next.revision = revision;
 			a_out = next;
 			return true;
-		}
-
-		void Publish(RE::TESObjectREFR* a_source, bool a_bumpRevision)
-		{
-			if (!a_source) {
-				return;
-			}
-			if (a_bumpRevision) {
-				++revision;
-				if (revision == 0) {
-					++revision;
-				}
-			}
-			state.revision = revision;
-			state.worldId = WorldIdFor(a_source);
-			state.sourceFormId = a_source->GetFormID();
-			Link::Get().WriteLootState(state);
 		}
 
 		RE::TESObjectREFR* CurrentSource()
