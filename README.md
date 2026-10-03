@@ -131,7 +131,7 @@ Minecraft has priority. These keys still go to Skyrim:
 
 | Key | Does |
 |---|---|
-| **G** | Skyrim activate: doors, NPCs (talk), containers, levers, furniture; dead NPCs and lootable containers are transferred to Minecraft inventory |
+| **G** | Skyrim activate: doors, NPCs (talk), containers, levers, furniture; dead NPCs and containers open a real Minecraft loot window |
 | **Esc** | Skyrim menu (or closes an open Minecraft screen) |
 | **J** / **M** | Skyrim journal / map |
 | **H** | Skyrim wait |
@@ -141,6 +141,8 @@ Minecraft has priority. These keys still go to Skyrim:
 
 Every other key is Minecraft's: **E** inventory, **F5** camera, **T** chat, **/** commands,
 **Shift** crouch/sneak, and so on.
+
+- **Skyrim loot:** G on a dead NPC or container opens a vanilla-style 6-row Minecraft chest screen. The top 54 slots are a read-only view of Skyrim's inventory; the bottom is your normal Minecraft inventory. Left-click takes a stack, right-click takes one item, Shift-click takes a stack, and double-click takes all matching loot. The source remains authoritative in Skyrim: Minecraft only receives an item after Skyrim confirms that it was removed. Quest objects are never exposed. Skyrim FormID, value, weight, base damage/armor, enchantment ID and other flags are preserved as custom item metadata.
 
 ## Known limitations
 
@@ -158,7 +160,7 @@ Every other key is Minecraft's: **E** inventory, **F5** camera, **T** chat, **/*
 
 - Skyrim's opening (cart ride and Helgen) may leave you stuck. Use
   [Alternate Start](https://www.nexusmods.com/skyrimspecialedition/mods/272) or a save made after Helgen.
-- Skyrim's full inventory, magic, shouts and perks can't be opened while Minecraft drives the player; only the dead-NPC/container loot bridge is exposed.
+- Skyrim's full inventory, magic, shouts and perks can't be opened while Minecraft drives the player; the loot bridge exposes dead-NPC/container inventories through the Minecraft GUI.
 - Minecraft hits only reach NPCs, not Skyrim objects such as the web around Arvel in Bleak Falls
   Barrow. There's no in-game switch back to plain Skyrim yet. Closing Minecraft hands control
   back to Skyrim; Minecraft keeps what it last autosaved, every few minutes. Deal with the object,
