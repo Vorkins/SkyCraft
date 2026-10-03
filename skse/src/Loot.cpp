@@ -13,6 +13,7 @@ namespace skycraft::Loot
 		std::uint32_t revision = 0;
 		std::uint32_t lastRequestId = 0;
 		bool           open = false;
+		constexpr float kMaxLootDistance = 240.0f; // ~3.4 MC blocks; close enough to behave like Skyrim activation
 		float          refreshTimer = 0.0f;
 		proto::LootState state{};
 
@@ -362,6 +363,11 @@ namespace skycraft::Loot
 
 		auto* source = CurrentSource();
 		if (!source || source->GetFormID() != state.sourceFormId || WorldIdFor(source) != state.worldId) {
+			CloseInternal(true);
+			return;
+		}
+		if (a_player->GetPosition().GetDistance(source->GetPosition()) > kMaxLootDistance) {
+			logger::info("loot session {} closed: player moved away from {:08X}", sessionId, state.sourceFormId);
 			CloseInternal(true);
 			return;
 		}
