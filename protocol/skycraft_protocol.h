@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 13;
+	inline constexpr std::uint32_t kVersion = 14;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -37,11 +37,11 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kOffActorTable = 0x12000;   // Skyrim -> MC, see ActorTable
 	inline constexpr std::uint64_t kOffEventRing = 0x17000;    // MC -> Skyrim, see McEvent
 	inline constexpr std::uint64_t kOffWorldEntities = 0x1C000;  // MC -> Skyrim, see WorldEntities
-	inline constexpr std::uint64_t kOffLootState = 0x1D000;      // Skyrim -> MC, authoritative loot snapshot
-	inline constexpr std::uint64_t kOffLootRequestRing = 0x1F000; // MC -> Skyrim, loot transactions
+	// Loot lives after the render ring so it never overlaps WorldEntities or the 32 MiB collision ring.
+	inline constexpr std::uint64_t kOffLootState = kOffRenderRing + kRenderRingBytes;       // Skyrim -> MC
+	inline constexpr std::uint64_t kOffLootRequestRing = kOffLootState + 0x2000;            // MC -> Skyrim
 	inline constexpr std::uint64_t kOffRenderRing = kOffOverlayPixels + kOverlaySlotBytes * kOverlaySlots;
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
-	inline constexpr std::uint64_t kMappingBytes = kOffRenderRing + kRenderRingBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -405,6 +405,7 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kLootRequestRingTailOff = 0x40;
 	inline constexpr std::uint64_t kLootRequestRingDataOff = 0x80;
 	inline constexpr std::uint64_t kLootRequestRingDataBytes = 0xF80; // 120 * 32
+	inline constexpr std::uint64_t kMappingBytes = kLootRequestRingDataOff + kLootRequestRingDataBytes;
 
 	enum LootRequestType : std::uint32_t
 	{
