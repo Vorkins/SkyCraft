@@ -1,11 +1,9 @@
 package dev.skycraft.world;
 
-import dev.skycraft.SkyCraft;
 import dev.skycraft.link.Proto;
 import dev.skycraft.net.SkyNet;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -19,7 +17,9 @@ public final class SkyrimItemAdapter {
 	}
 
 	public static ItemStack create(SkyNet.LootItem source) {
-		ItemStack stack = new ItemStack(baseItem(source), Math.max(1, source.count()));
+		Item base = baseItem(source);
+		int count = Math.max(1, Math.min(source.count(), base.getDefaultMaxStackSize()));
+		ItemStack stack = new ItemStack(base, count);
 		stack.set(SkyrimItemComponents.SKYRIM_ITEM, new SkyrimItemComponent(
 			source.formId(),
 			source.baseFormId(),
