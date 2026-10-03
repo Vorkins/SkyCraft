@@ -68,6 +68,14 @@ public final class SkyLootMenu extends AbstractContainerMenu {
 			snapshot.sourceFormId() == sourceFormId;
 	}
 
+	public int nextRequestId() {
+		++nextRequestId;
+		if (nextRequestId == 0) {
+			nextRequestId = 1;
+		}
+		return nextRequestId;
+	}
+
 	public boolean acceptsRequest(SkyNet.LootRequest request) {
 		return request.sessionId() == sessionId
 			&& request.sourceFormId() == sourceFormId
@@ -116,7 +124,7 @@ public final class SkyLootMenu extends AbstractContainerMenu {
 			return false;
 		}
 		int count = takeAll ? stack.getCount() : Math.max(1, Math.min(requestedCount, stack.getCount()));
-		int requestId = ++nextRequestId;
+		int requestId = nextRequestId();
 		SkyNet.LootRequest request;
 		if (takeAll) {
 			request = new SkyNet.LootRequest(
