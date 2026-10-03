@@ -401,6 +401,8 @@ namespace skycraft::proto
 		LootItem      items[kLootMaxItems];
 	};
 	static_assert(sizeof(LootState) == 0x1480);
+	static_assert(kOffLootState >= kOffRenderRing + kRenderRingBytes);
+	static_assert(kOffLootState + sizeof(LootState) <= kOffLootRequestRing);
 
 	// ---- loot request ring (MC -> Skyrim, after LootState) ------------------------------------
 	inline constexpr std::uint32_t kLootRequestRingEntries = 120;
@@ -428,6 +430,7 @@ namespace skycraft::proto
 		std::uint32_t revision;
 	};
 	static_assert(sizeof(LootRequest) == 32);
+	static_assert(kOffLootRequestRing + 0x1000 <= kMappingBytes);
 
 	// ---- render ring (MC -> Skyrim) -----------------------------------------------------------
 	// Byte ring like the collision ring. Minecraft ships its own block meshes (built by Minecraft's
