@@ -562,7 +562,7 @@ public final class SkyLink {
 	}
 
 	/** Push a validated loot transaction request into Skyrim's request ring. */
-	public static synchronized void pushLootRequest(
+	public static synchronized boolean pushLootRequest(
 		int type,
 		int requestId,
 		int sessionId,
@@ -574,14 +574,14 @@ public final class SkyLink {
 	) {
 		MemorySegment s = shm;
 		if (s == null) {
-			return;
+			return false;
 		}
 		long b = OFF_LOOT_REQUEST_RING;
 		long head = s.get(JAVA_LONG, b + LR_HEAD);
 		long tail = (long) LONG.getAcquire(s, b + LR_TAIL);
 		if (head - tail >= LOOT_REQUEST_RING_ENTRIES) {
 			SkyCraft.LOG.warn("SkyCraft: loot request ring full; dropping request {}", requestId);
-			return;
+			return false;
 		}
 		long r = b + LR_DATA + (head % LOOT_REQUEST_RING_ENTRIES) * LOOT_REQUEST_BYTES;
 		s.set(JAVA_INT, r, type);
@@ -593,6 +593,7 @@ public final class SkyLink {
 		s.set(JAVA_INT, r + 24, count);
 		s.set(JAVA_INT, r + 28, revision);
 		LONG.setRelease(s, b + LR_HEAD, head + 1);
+		return true;
 	}
 
 	// ---- event ring (produce) --------------------------------------------------------------
