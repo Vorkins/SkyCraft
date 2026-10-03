@@ -1,7 +1,6 @@
 package dev.skycraft.client;
 
 import dev.skycraft.combat.SkyCombat;
-import dev.skycraft.world.SkyLoot;
 import dev.skycraft.link.Proto;
 import dev.skycraft.link.SkyLink;
 import net.minecraft.client.Minecraft;
@@ -64,7 +63,7 @@ public final class InputBridge {
 			}
 			case Proto.IN_RELEASE_ALL -> releaseAll();
 			case Proto.IN_HURT -> hurt(minecraft, code, a / 100.0F, b, c);
-			case Proto.IN_LOOT_ITEM -> loot(minecraft, code, a, b, c);
+
 			case Proto.IN_OPEN_MENU -> {
 				if (minecraft.gui.screen() == null && minecraft.player != null) {
 					releaseAll();
@@ -76,27 +75,6 @@ public final class InputBridge {
 		}
 	}
 
-
-	/** Skyrim opened a corpse/container on the host machine. */
-	private static void loot(Minecraft minecraft, int category, int formId, int count, int sourceFormId) {
-		if (minecraft.player == null) {
-			return;
-		}
-		var server = minecraft.getSingleplayerServer();
-		if (server == null) {
-			if (net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Loot.TYPE)) {
-				net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new dev.skycraft.net.SkyNet.Loot(category, formId, count, sourceFormId));
-			}
-			return;
-		}
-		var uuid = minecraft.player.getUUID();
-		server.execute(() -> {
-			ServerPlayer player = server.getPlayerList().getPlayer(uuid);
-			if (player != null) {
-				SkyLoot.receive(player, category, formId, count);
-			}
-		});
-	}
 
 	/** Skyrim hit the player: apply it as Minecraft damage on the integrated server (or the host's). */
 	private static void hurt(Minecraft minecraft, int kind, float skyrimDamage, int attacker, int flags) {
