@@ -1,0 +1,28 @@
+name: Fabric build
+
+on:
+  push:
+    paths:
+      - "fabric/**"
+      - "protocol/**"
+      - ".github/workflows/fabric-build.yml"
+  pull_request:
+    paths:
+      - "fabric/**"
+      - "protocol/**"
+      - ".github/workflows/fabric-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+      - name: Build Fabric mod
+        working-directory: fabric
+        run: ./gradlew build --no-daemon
