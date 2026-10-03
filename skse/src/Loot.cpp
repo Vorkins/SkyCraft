@@ -271,18 +271,38 @@ namespace skycraft::Loot
 			if (!open) {
 				return;
 			}
+
+			auto* source = CurrentSource();
+			const auto nextRevision = ++revision == 0 ? ++revision : revision;
+			proto::LootState closed{};
+
+			if (source && BuildSnapshot(source, closed, true)) {
+				closed.phase = proto::kLootClosed;
+				closed.sessionId = sessionId;
+				closed.revision = nextRevision;
+				closed.worldId = WorldIdFor(source);
+				closed.sourceFormId = source->GetFormID();
+				state = closed;
+			} else {
+				state = {};
+				state.phase = proto::kLootClosed;
+				state.sessionId = sessionId;
+				state.revision = nextRevision;
+				if (source) {
+					state.worldId = WorldIdFor(source);
+					state.sourceFormId = source->GetFormID();
+				}
+			}
+
 			open = false;
 			sessionHandle = {};
 			refreshTimer = 0.0f;
-			state = {};
-			state.phase = proto::kLootClosed;
-			state.sessionId = sessionId;
-			state.revision = ++revision;
 			lastRequestId = 0;
 			if (a_publish) {
 				Link::Get().WriteLootState(state);
 			}
 		}
+
 	}
 
 	bool OpenTarget(RE::TESObjectREFR* a_target, RE::PlayerCharacter* a_player)
