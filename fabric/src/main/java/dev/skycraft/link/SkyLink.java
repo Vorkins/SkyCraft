@@ -460,6 +460,141 @@ public final class SkyLink {
 		return new String(bytes, 0, n, StandardCharsets.UTF_8);
 	}
 
+	// ---- loot state (read) -----------------------------------------------------------------
+
+	public record LootItem(
+		int formId,
+		int baseFormId,
+		int count,
+		int flags,
+		int category,
+		int value,
+		float weight,
+		float damage,
+		float armor,
+		int enchantmentFormId,
+		int soulLevel,
+		String name
+	) {
+	}
+
+	public static final class LootState {
+		public int phase;
+		public int sessionId;
+		public int revision;
+		public int worldId;
+		public int sourceFormId;
+		public int flags;
+		public String title = "";
+		public final java.util.ArrayList<LootItem> items = new java.util.ArrayList<>(LOOT_MAX_ITEMS);
+
+		public void clear() {
+			phase = LOOT_CLOSED;
+			sessionId = 0;
+			revision = 0;
+			worldId = 0;
+			sourceFormId = 0;
+			flags = 0;
+			title = "";
+			items.clear();
+		}
+	}
+
+	/** Consistent seqlock snapshot of Skyrim's current loot session. */
+	public static boolean readLootState(LootState out) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long b = OFF_LOOT_STATE;
+		for (int attempt = 0; attempt < 32; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + LS_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+
+			int phase = s.get(JAVA_INT, b + LS_PHASE);
+			int sessionId = s.get(JAVA_INT, b + LS_SESSION_ID);
+			int revision = s.get(JAVA_INT, b + LS_REVISION);
+			int worldId = s.get(JAVA_INT, b + LS_WORLD_ID);
+			int sourceFormId = s.get(JAVA_INT, b + LS_SOURCE_FORM_ID);
+			int count = Math.max(0, Math.min(LOOT_MAX_ITEMS, s.get(JAVA_INT, b + LS_COUNT)));
+			int flags = s.get(JAVA_INT, b + LS_FLAGS);
+			String title = readName(s, b + LS_TITLE, LOOT_TITLE_BYTES);
+
+			java.util.ArrayList<LootItem> items = new java.util.ArrayList<>(count);
+			for (int i = 0; i < count; i++) {
+				long r = b + LS_ITEMS + (long) i * LOOT_ITEM_BYTES;
+				items.add(new LootItem(
+					s.get(JAVA_INT, r),
+					s.get(JAVA_INT, r + 4),
+					s.get(JAVA_INT, r + 8),
+					s.get(JAVA_INT, r + 12),
+					s.get(JAVA_INT, r + 16),
+					s.get(JAVA_INT, r + 20),
+					s.get(JAVA_FLOAT, r + 24),
+					s.get(JAVA_FLOAT, r + 28),
+					s.get(JAVA_FLOAT, r + 32),
+					s.get(JAVA_INT, r + 36),
+					s.get(JAVA_INT, r + 40),
+					readName(s, r + 48, LOOT_ITEM_NAME_BYTES)
+				));
+			}
+
+			VarHandle.loadLoadFence();
+			if ((int) INT.getAcquire(s, b + LS_SEQ) != seq1) {
+				continue;
+			}
+
+			out.phase = phase;
+			out.sessionId = sessionId;
+			out.revision = revision;
+			out.worldId = worldId;
+			out.sourceFormId = sourceFormId;
+			out.flags = flags;
+			out.title = title;
+			out.items.clear();
+			out.items.addAll(items);
+			return true;
+		}
+		return false;
+	}
+
+	/** Push a validated loot transaction request into Skyrim's request ring. */
+	public static synchronized void pushLootRequest(
+		int type,
+		int requestId,
+		int sessionId,
+		int sourceFormId,
+		int formId,
+		int baseFormId,
+		int count,
+		int revision
+	) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return;
+		}
+		long b = OFF_LOOT_REQUEST_RING;
+		long head = s.get(JAVA_LONG, b + LR_HEAD);
+		long tail = (long) LONG.getAcquire(s, b + LR_TAIL);
+		if (head - tail >= LOOT_REQUEST_RING_ENTRIES) {
+			SkyCraft.LOG.warn("SkyCraft: loot request ring full; dropping request {}", requestId);
+			return;
+		}
+		long r = b + LR_DATA + (head % LOOT_REQUEST_RING_ENTRIES) * LOOT_REQUEST_BYTES;
+		s.set(JAVA_INT, r, type);
+		s.set(JAVA_INT, r + 4, requestId);
+		s.set(JAVA_INT, r + 8, sessionId);
+		s.set(JAVA_INT, r + 12, sourceFormId);
+		s.set(JAVA_INT, r + 16, formId);
+		s.set(JAVA_INT, r + 20, baseFormId);
+		s.set(JAVA_INT, r + 24, count);
+		s.set(JAVA_INT, r + 28, revision);
+		LONG.setRelease(s, b + LR_HEAD, head + 1);
+	}
+
 	// ---- event ring (produce) --------------------------------------------------------------
 
 	/** Queues an event for Skyrim. Safe from any thread. Drops the event if Skyrim is a full ring behind. */
