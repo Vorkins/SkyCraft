@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Verify that protocol/skycraft_protocol.h and Proto.java agree.
 
-The protocol is duplicated by design because the Skyrim side is C++ and the Minecraft
-side is Java. This check catches accidental drift before a binary build is attempted.
+This checker deliberately resolves arithmetic expressions instead of only comparing literal
+numbers. That matters for derived offsets such as kOffLootState.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CPP = ROOT / "protocol" / "skycraft_protocol.h"
 JAVA = ROOT / "fabric" / "src" / "main" / "java" / "dev" / "skycraft" / "link" / "Proto.java"
 
-
 BINOPS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -30,10 +29,9 @@ BINOPS = {
 UNARY = {ast.USub: operator.neg, ast.UAdd: operator.pos, ast.Invert: operator.invert}
 
 
-def eval_int(expr: str) -> int:
-    expr = re.sub(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|\d+)(?:ULL|ull|UL|ul|LL|ll|u|U|L|l)\b",
-                  lambda m: re.sub(r"[A-Za-z]+$", "", m.group(0)), expr.strip())
-    expr = re.sub(r"\b(?:ULL|ull|UL|ul|LL|ll|u|U|L|l)\b", "", expr)
+def eval_int(expr: str, names: dict[str, int] | None = None) -> int:
+    names = names or {}
+    expr = re.sub(r"\b(?:ULL|ull|UL|ul|LL|ll|u|U|L|l)\b", "", expr.strip())
     tree = ast.parse(expr, mode="eval")
 
     def walk(node: ast.AST) -> int:
@@ -41,6 +39,8 @@ def eval_int(expr: str) -> int:
             return walk(node.body)
         if isinstance(node, ast.Constant) and isinstance(node.value, int):
             return int(node.value)
+        if isinstance(node, ast.Name) and node.id in names:
+            return names[node.id]
         if isinstance(node, ast.BinOp) and type(node.op) in BINOPS:
             return BINOPS[type(node.op)](walk(node.left), walk(node.right))
         if isinstance(node, ast.UnaryOp) and type(node.op) in UNARY:
@@ -48,6 +48,23 @@ def eval_int(expr: str) -> int:
         raise ValueError(expr)
 
     return walk(tree)
+
+
+def resolve(raw: dict[str, str], initial: dict[str, int] | None = None) -> dict[str, int]:
+    resolved = dict(initial or {})
+    pending = dict(raw)
+    for _ in range(len(pending) + 4):
+        progress = False
+        for name, expr in list(pending.items()):
+            try:
+                resolved[name] = eval_int(expr, resolved)
+            except (SyntaxError, ValueError):
+                continue
+            del pending[name]
+            progress = True
+        if not pending or not progress:
+            break
+    return resolved
 
 
 def camel_to_upper(name: str) -> str:
@@ -58,18 +75,15 @@ def camel_to_upper(name: str) -> str:
     return name.upper()
 
 
-def extract_cpp_scalars(text: str) -> dict[str, int]:
-    out: dict[str, int] = {}
+def extract_cpp_scalars(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
     pattern = re.compile(
         r"\b(?:static\s+)?(?:inline\s+)?(?:constexpr\s+)?"
         r"(?:std::uint8_t|std::uint16_t|std::uint32_t|std::uint64_t|int|long|size_t)\s+"
         r"(k[A-Za-z0-9_]+)\s*=\s*([^;,\n]+)"
     )
     for name, expr in pattern.findall(text):
-        try:
-            out[name] = eval_int(expr)
-        except (SyntaxError, ValueError):
-            pass
+        out[name] = expr
     return out
 
 
@@ -82,7 +96,7 @@ def extract_cpp_enums(text: str) -> dict[str, int]:
         for name, expr in item_re.findall(body):
             if expr:
                 try:
-                    current = eval_int(expr)
+                    current = eval_int(expr, out)
                 except (SyntaxError, ValueError):
                     continue
             else:
@@ -91,32 +105,24 @@ def extract_cpp_enums(text: str) -> dict[str, int]:
     return out
 
 
-def extract_java_scalars(text: str) -> dict[str, int]:
-    out: dict[str, int] = {}
-    # Works for both single declarations and comma-separated declarations.
-    declaration = re.compile(
-        r"\bpublic\s+static\s+final\s+(?:int|long)\s+([^;]+);"
-    )
+def extract_java_scalars(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    declaration = re.compile(r"\bpublic\s+static\s+final\s+(?:int|long)\s+([^;]+);")
     assignment = re.compile(r"\b([A-Z][A-Z0-9_]*)\s*=\s*([^,]+)")
-    for declaration_body in declaration.findall(text):
-        for name, expr in assignment.findall(declaration_body):
-            try:
-                out[name] = eval_int(expr)
-            except (SyntaxError, ValueError):
-                pass
+    for body in declaration.findall(text):
+        for name, expr in assignment.findall(body):
+            out[name] = expr
     return out
 
 
-def check_constants(cpp: dict[str, int], java: dict[str, int]) -> list[str]:
+def compare_numeric(cpp: dict[str, int], java: dict[str, int]) -> list[str]:
     errors: list[str] = []
-    for cpp_name, cpp_value in sorted({**cpp}.items()):
+    for cpp_name, cpp_value in sorted(cpp.items()):
         java_name = camel_to_upper(cpp_name)
-        # The Java mirror has extra helper offsets that do not exist as named C++ constants.
         if java_name not in java:
             continue
-        java_value = java[java_name]
-        if cpp_value != java_value:
-            errors.append(f"{cpp_name}={cpp_value} != {java_name}={java_value}")
+        if cpp_value != java[java_name]:
+            errors.append(f"{cpp_name}={cpp_value} != {java_name}={java[java_name]}")
     return errors
 
 
@@ -128,57 +134,80 @@ def main() -> int:
     cpp_text = CPP.read_text(encoding="utf-8")
     java_text = JAVA.read_text(encoding="utf-8")
 
-    cpp = {**extract_cpp_scalars(cpp_text), **extract_cpp_enums(cpp_text)}
-    java = extract_java_scalars(java_text)
+    cpp_raw = extract_cpp_scalars(cpp_text)
+    cpp_values = resolve(cpp_raw, extract_cpp_enums(cpp_text))
+    java_raw = extract_java_scalars(java_text)
+    java_values = resolve(java_raw)
 
-    errors = check_constants(cpp, java)
+    errors = compare_numeric(cpp_values, java_values)
 
     version_match = re.search(r"\bkVersion\s*=\s*([^;]+)", cpp_text)
-    if not version_match or java.get("VERSION") is None:
+    if not version_match or "VERSION" not in java_values:
         errors.append("could not read protocol VERSION")
-    elif eval_int(version_match.group(1)) != java["VERSION"]:
-        errors.append(f"kVersion={eval_int(version_match.group(1))} != VERSION={java['VERSION']}")
+    else:
+        expected = eval_int(version_match.group(1), cpp_values)
+        if expected != java_values["VERSION"]:
+            errors.append(f"kVersion={expected} != VERSION={java_values['VERSION']}")
 
-    # Validate the fixed-size records that Java explicitly mirrors with byte-count constants.
     size_map = {
+        "Header": None,
+        "OverlaySlotHdr": "SLOT_HDR_SIZE",
         "ActorRecord": "ACTOR_RECORD_BYTES",
         "McEvent": "EVENT_BYTES",
         "WorldEntity": "WORLD_ENTITY_BYTES",
+        "LootItem": "LOOT_ITEM_BYTES",
+        "LootState": "LOOT_STATE_BYTES",
+        "LootRequest": "LOOT_REQUEST_BYTES",
         "RenVertex": "REN_VERTEX_BYTES",
         "ColTri": "COL_TRI_BYTES",
         "ColRegion": "COL_REGION_HEADER_BYTES",
         "ColBlock": "COL_BLOCK_BYTES",
-        "OverlaySlotHdr": "SLOT_HDR_SIZE",
-        "LootItem": "LOOT_ITEM_BYTES",
-        "LootState": "LOOT_STATE_BYTES",
-        "LootRequest": "LOOT_REQUEST_BYTES",
     }
     for struct_name, java_name in size_map.items():
-        m = re.search(
-            rf"static_assert\s*\(\s*sizeof\(\s*{re.escape(struct_name)}\s*\)\s*==\s*([^;]+)\)",
-            cpp_text,
-        )
-        if not m:
-            errors.append(f"missing C++ size assert for {struct_name}")
-            continue
-        expected = eval_int(m.group(1))
-        actual = java.get(java_name)
-        if actual is None:
-            errors.append(f"missing Java size constant {java_name}")
-        elif expected != actual:
-            errors.append(f"{struct_name} size {expected} != {java_name}={actual}")
+        if struct_name == "Header":
+            expected = 0x20
+        else:
+            m = re.search(
+                rf"static_assert\s*\(\s*sizeof\(\s*{re.escape(struct_name)}\s*\)\s*==\s*([^;]+)\)",
+                cpp_text,
+            )
+            if not m:
+                errors.append(f"missing C++ size assert for {struct_name}")
+                continue
+            try:
+                expected = eval_int(m.group(1), cpp_values)
+            except (SyntaxError, ValueError):
+                errors.append(f"could not evaluate sizeof assert for {struct_name}")
+                continue
 
-    explicit_sizes = {
-        "LootItem": (96, "LOOT_ITEM_BYTES"),
-        "LootState": (0x1480, "LOOT_STATE_BYTES"),
-        "LootRequest": (32, "LOOT_REQUEST_BYTES"),
-    }
-    for struct_name, (expected, java_name) in explicit_sizes.items():
-        actual = java.get(java_name)
-        if actual is None:
-            errors.append(f"missing Java size constant {java_name}")
-        elif actual != expected:
-            errors.append(f"{struct_name} size {expected} != {java_name}={actual}")
+        if java_name is not None:
+            actual = java_values.get(java_name)
+            if actual is None:
+                errors.append(f"missing Java size constant {java_name}")
+            elif expected != actual:
+                errors.append(f"{struct_name} size {expected} != {java_name}={actual}")
+
+    # Explicit layout invariants that must never overlap.
+    try:
+        world_off = cpp_values["kOffWorldEntities"]
+        collision_off = cpp_values["kOffCollisionRing"]
+        world_size = cpp_values["kMaxWorldEntities"] * 96 + 0x40
+        loot_off = cpp_values["kOffLootState"]
+        loot_req = cpp_values["kOffLootRequestRing"]
+        mapping = cpp_values["kMappingBytes"]
+
+        if world_off + world_size > collision_off:
+            errors.append("WorldEntities overlaps the collision ring")
+        if loot_off < cpp_values["kOffRenderRing"] + cpp_values["kRenderRingBytes"]:
+            errors.append("LootState starts before the render ring ends")
+        if loot_off < loot_req and loot_off + 0x1480 > loot_req:
+            errors.append("LootState overlaps LootRequest ring")
+        if loot_req + 0x1000 > mapping:
+            errors.append("LootRequest ring exceeds mapping size")
+        if loot_off < cpp_values["kOffCollisionRing"] + cpp_values["kCollisionRingBytes"]:
+            errors.append("LootState overlaps the collision ring")
+    except KeyError as exc:
+        errors.append(f"missing layout constant: {exc.args[0]}")
 
     if errors:
         print("protocol-check: FAILED")
@@ -187,9 +216,12 @@ def main() -> int:
         return 1
 
     print("protocol-check: OK")
-    print(f"  version: {java['VERSION']}")
-    print(f"  checked C++ numeric constants: {len(cpp)}")
-    print(f"  checked Java numeric constants: {len(java)}")
+    print(f"  version: {java_values['VERSION']}")
+    print(f"  checked C++ constants: {len(cpp_values)}")
+    print(f"  checked Java constants: {len(java_values)}")
+    print(f"  loot state offset: 0x{cpp_values['kOffLootState']:X}")
+    print(f"  loot request offset: 0x{cpp_values['kOffLootRequestRing']:X}")
+    print(f"  mapping bytes: 0x{cpp_values['kMappingBytes']:X}")
     return 0
 
 
