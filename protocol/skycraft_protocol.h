@@ -324,6 +324,21 @@ namespace skycraft::proto
 	static_assert(kOffWorldEntities + sizeof(WorldEntities) <= kOffCollisionRing);
 
 
+	// Skyrim inventory categories shared by both sides.
+	enum LootCategory : std::uint32_t
+	{
+		kLootGold = 1,
+		kLootWeapon = 2,
+		kLootArmor = 3,
+		kLootAmmo = 4,
+		kLootPotion = 5,
+		kLootIngredient = 6,
+		kLootBook = 7,
+		kLootKey = 8,
+		kLootSoulGem = 9,
+		kLootMisc = 10,
+	};
+
 	// ---- loot state @0x1D000 (Skyrim -> MC, seqlock) ------------------------------------------
 	inline constexpr std::uint32_t kLootMaxItems = 54;  // six Minecraft chest rows
 	inline constexpr std::uint32_t kLootTitleBytes = 32;
