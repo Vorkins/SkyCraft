@@ -36,12 +36,15 @@ namespace skycraft::proto
 	inline constexpr std::uint32_t kOverlaySlots = 3;
 	inline constexpr std::uint64_t kOffActorTable = 0x12000;   // Skyrim -> MC, see ActorTable
 	inline constexpr std::uint64_t kOffEventRing = 0x17000;    // MC -> Skyrim, see McEvent
+	inline constexpr std::uint64_t kOffActorTable = 0x12000;   // Skyrim -> MC, see ActorTable
+	inline constexpr std::uint64_t kOffEventRing = 0x17000;    // MC -> Skyrim, see McEvent
 	inline constexpr std::uint64_t kOffWorldEntities = 0x1C000;  // MC -> Skyrim, see WorldEntities
-	// Loot lives after the render ring so it never overlaps WorldEntities or the 32 MiB collision ring.
-	inline constexpr std::uint64_t kOffLootState = kOffRenderRing + kRenderRingBytes;       // Skyrim -> MC
-	inline constexpr std::uint64_t kOffLootRequestRing = kOffLootState + 0x2000;            // MC -> Skyrim
 	inline constexpr std::uint64_t kOffRenderRing = kOffOverlayPixels + kOverlaySlotBytes * kOverlaySlots;
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
+	// Loot is intentionally after the render ring; the old 0x1D000 gap is occupied by WorldEntities.
+	inline constexpr std::uint64_t kOffLootState = kOffRenderRing + kRenderRingBytes; // Skyrim -> MC
+	inline constexpr std::uint64_t kOffLootRequestRing = kOffLootState + 0x2000;      // MC -> Skyrim
+	inline constexpr std::uint64_t kMappingBytes = kOffLootRequestRing + 0x1000;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -339,7 +342,7 @@ namespace skycraft::proto
 		kLootMisc = 10,
 	};
 
-	// ---- loot state @0x1D000 (Skyrim -> MC, seqlock) ------------------------------------------
+	// ---- loot state (after render ring, Skyrim -> MC, seqlock) --------------------------------
 	inline constexpr std::uint32_t kLootMaxItems = 54;  // six Minecraft chest rows
 	inline constexpr std::uint32_t kLootTitleBytes = 32;
 	inline constexpr std::uint32_t kLootItemNameBytes = 48;
@@ -399,13 +402,12 @@ namespace skycraft::proto
 	};
 	static_assert(sizeof(LootState) == 0x1480);
 
-	// ---- loot request ring @0x1F000 (MC -> Skyrim) --------------------------------------------
+	// ---- loot request ring (MC -> Skyrim, after LootState) ------------------------------------
 	inline constexpr std::uint32_t kLootRequestRingEntries = 120;
 	inline constexpr std::uint64_t kLootRequestRingHeadOff = 0x00;
 	inline constexpr std::uint64_t kLootRequestRingTailOff = 0x40;
 	inline constexpr std::uint64_t kLootRequestRingDataOff = 0x80;
 	inline constexpr std::uint64_t kLootRequestRingDataBytes = 0xF80; // 120 * 32
-	inline constexpr std::uint64_t kMappingBytes = kLootRequestRingDataOff + kLootRequestRingDataBytes;
 
 	enum LootRequestType : std::uint32_t
 	{
