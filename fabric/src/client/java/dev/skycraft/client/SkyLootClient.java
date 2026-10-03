@@ -19,6 +19,7 @@ public final class SkyLootClient {
 	private static int sentSession = Integer.MIN_VALUE;
 	private static int sentRevision = Integer.MIN_VALUE;
 	private static int sentPhase = Integer.MIN_VALUE;
+	private static int sentGeneration = Integer.MIN_VALUE;
 
 	private SkyLootClient() {
 	}
@@ -27,9 +28,25 @@ public final class SkyLootClient {
 		ClientTickEvents.END_CLIENT_TICK.register(SkyLootClient::tick);
 	}
 
+	private static void resetSent() {
+		sentSession = Integer.MIN_VALUE;
+		sentRevision = Integer.MIN_VALUE;
+		sentPhase = Integer.MIN_VALUE;
+	}
+
 	private static void tick(Minecraft minecraft) {
 		if (!SkyLink.active() || minecraft.player == null) {
+			int generation = SkyLink.generation();
+			if (generation != sentGeneration) {
+				resetSent();
+				sentGeneration = generation;
+			}
 			return;
+		}
+		int generation = SkyLink.generation();
+		if (generation != sentGeneration) {
+			resetSent();
+			sentGeneration = generation;
 		}
 		SkyLink.LootState state = new SkyLink.LootState();
 		if (!SkyLink.readLootState(state)) {
