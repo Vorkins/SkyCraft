@@ -103,6 +103,8 @@ namespace skycraft
 		std::memset(base_ + proto::kOffActorTable, 0, sizeof(proto::ActorTable));
 		std::memset(base_ + proto::kOffEventRing, 0, proto::kEventRingDataOff);
 		std::memset(base_ + proto::kOffWorldEntities, 0, sizeof(proto::WorldEntities));
+		std::memset(base_ + proto::kOffLootState, 0, sizeof(proto::LootState));
+		std::memset(base_ + proto::kOffLootRequestRing, 0, 0x1000);
 		std::memset(base_ + proto::kOffRenderRing, 0, proto::kRenRingDataOff);
 		header->version = proto::kVersion;
 		header->skyrimPid = ::GetCurrentProcessId();
@@ -235,6 +237,61 @@ namespace skycraft
 		std::memcpy(data + pos + sizeof(proto::ColMsgHeader), a_payload, a_bytes);
 		Atomic(headRef).store(head + msgBytes, std::memory_order_release);
 		return true;
+	}
+
+
+	void Link::WriteLootState(const proto::LootState& a_state)
+	{
+		if (!base_) {
+			return;
+		}
+		auto* dst = At<proto::LootState>(proto::kOffLootState);
+		auto seq = Atomic(dst->seq);
+		const auto s = seq.load(std::memory_order_relaxed);
+		seq.store(s + 1, std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_release);
+		std::memcpy(reinterpret_cast<std::uint8_t*>(dst) + 4, reinterpret_cast<const std::uint8_t*>(&a_state) + 4, sizeof(proto::LootState) - 4);
+		seq.store(s + 2, std::memory_order_release);
+	}
+
+	bool Link::ReadLootRequest(proto::LootRequest& a_out)
+	{
+		if (!base_) {
+			return false;
+		}
+		auto* ring = base_ + proto::kOffLootRequestRing;
+		auto& headRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kLootRequestRingHeadOff);
+		auto& tailRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kLootRequestRingTailOff);
+		const auto head = Atomic(headRef).load(std::memory_order_acquire);
+		auto tail = Atomic(tailRef).load(std::memory_order_relaxed);
+		if (tail >= head) {
+			return false;
+		}
+		if (head - tail > proto::kLootRequestRingEntries) {
+			tail = head - proto::kLootRequestRingEntries;
+		}
+		const auto index = tail % proto::kLootRequestRingEntries;
+		a_out = reinterpret_cast<const proto::LootRequest*>(ring + proto::kLootRequestRingDataOff)[index];
+		Atomic(tailRef).store(tail + 1, std::memory_order_release);
+		return true;
+	}
+
+	void Link::PushLootRequest(const proto::LootRequest& a_request)
+	{
+		if (!base_) {
+			return;
+		}
+		auto* ring = base_ + proto::kOffLootRequestRing;
+		auto& headRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kLootRequestRingHeadOff);
+		auto& tailRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kLootRequestRingTailOff);
+		auto head = Atomic(headRef).load(std::memory_order_relaxed);
+		const auto tail = Atomic(tailRef).load(std::memory_order_acquire);
+		if (head - tail >= proto::kLootRequestRingEntries) {
+			return;
+		}
+		const auto index = head % proto::kLootRequestRingEntries;
+		std::memcpy(ring + proto::kLootRequestRingDataOff + index * sizeof(proto::LootRequest), &a_request, sizeof(proto::LootRequest));
+		Atomic(headRef).store(head + 1, std::memory_order_release);
 	}
 
 	void Link::WriteActors(const proto::ActorRecord* a_records, std::uint32_t a_count)
