@@ -2,6 +2,7 @@ package dev.skycraft.net;
 
 import dev.skycraft.SkyCraft;
 import dev.skycraft.combat.SkyCombat;
+import dev.skycraft.link.Proto;
 import dev.skycraft.world.SkyDig;
 import dev.skycraft.world.SkyLoot;
 import java.util.List;

@@ -136,6 +136,7 @@ Minecraft has priority. These keys still go to Skyrim:
 | **J** / **M** | Skyrim journal / map |
 | **H** | Skyrim wait |
 | **F9** | Skyrim quickload (save from the Esc menu) |
+| **F8** | Toggle Minecraft / normal Skyrim controls (close menus first) |
 | **~** | Skyrim console |
 | **O** | Minecraft pause / options menu |
 
@@ -158,11 +159,12 @@ Every other key is Minecraft's: **E** inventory, **F5** camera, **T** chat, **/*
 
 - Skyrim's opening (cart ride and Helgen) may leave you stuck. Use
   [Alternate Start](https://www.nexusmods.com/skyrimspecialedition/mods/272) or a save made after Helgen.
-- Skyrim's full inventory, magic, shouts and perks can't be opened while Minecraft drives the player; only the dead-NPC/container loot bridge is exposed.
+- Skyrim's inventory, magic, shouts and perks can be used after pressing F8 to return to Skyrim controls.
 - Minecraft hits only reach NPCs, not Skyrim objects such as the web around Arvel in Bleak Falls
-  Barrow. There's no in-game switch back to plain Skyrim yet. Closing Minecraft hands control
-  back to Skyrim; Minecraft keeps what it last autosaved, every few minutes. Deal with the object,
-  then restart Skyrim to bring Minecraft back.
+  Barrow. Press F8 during gameplay to return to Skyrim controls, equip a Skyrim weapon and deal
+  with the object, then press F8 again to resume Minecraft at your current position and view.
+  Minecraft stays running and its HUD is hidden during Skyrim control. Its pause menu pauses
+  a local single-player world; a world opened to LAN or hosted elsewhere continues running.
 - Sign text isn't drawn yet.
 - All Skyrim interiors share one Minecraft world, so blocks placed in one interior can appear in
   another at the same coordinates.

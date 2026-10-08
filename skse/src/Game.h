@@ -7,6 +7,7 @@ namespace skycraft
 	// Shared runtime state between the per-frame update, input sink and renderer hook.
 	struct Runtime
 	{
+		std::atomic<bool> nativeControl{ false };
 		// Minecraft is connected, in its world, has acknowledged our last teleport, and Skyrim
 		// isn't loading: MC's player position drives Skyrim's player.
 		std::atomic<bool> puppeting{ false };
@@ -49,6 +50,7 @@ namespace skycraft
 	{
 		void Install();
 		void OnGameLoaded();
+		void ToggleNativeControl();
 		// A Skyrim menu that takes the mouse or pauses the game is open (checked live: while it
 		// pauses the game, the per-frame update that normally tracks it doesn't run).
 		bool SkyrimMenuOpen();

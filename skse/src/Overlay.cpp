@@ -234,7 +234,7 @@ float4 PSMain(VSOut i) : SV_Target {
 				st.viewportW = static_cast<int>(desc.BufferDesc.Width);
 				st.viewportH = static_cast<int>(desc.BufferDesc.Height);
 			}
-			if (!Link::Get().Valid() || !Link::Get().McAlive() || !st.mcInWorld || !InitResources(a_swapChain)) {
+			if (st.nativeControl || !Link::Get().Valid() || !Link::Get().McAlive() || !st.mcInWorld || !InitResources(a_swapChain)) {
 				return;
 			}
 			UploadLatestFrame();

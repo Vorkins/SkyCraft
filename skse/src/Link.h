@@ -26,8 +26,8 @@ namespace skycraft
 		// Seqlock read of MC -> Skyrim state. Returns false if no consistent snapshot was obtained.
 		bool ReadMcState(proto::McState& a_out) const;
 
-		// Input ring (producer side). Drops the event if MC has fallen a full ring behind.
-		void PushInput(proto::InputType a_type, std::uint16_t a_code, std::int32_t a_a = 0, std::int32_t a_b = 0, std::int32_t a_c = 0);
+		// Input ring (producer side). Returns false if the mapping is absent or the ring is full.
+		bool PushInput(proto::InputType a_type, std::uint16_t a_code, std::int32_t a_a = 0, std::int32_t a_b = 0, std::int32_t a_c = 0);
 
 		// Collision ring (producer side, one thread only). Returns false if the ring is full.
 		bool WriteCollision(proto::ColType a_type, const void* a_payload, std::uint32_t a_bytes);

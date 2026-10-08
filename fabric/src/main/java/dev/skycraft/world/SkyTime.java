@@ -4,7 +4,8 @@ import dev.skycraft.SkyCraft;
 import dev.skycraft.link.SkyLink;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.world.clock.WorldClocks;
 
 /**
  * Keeps Minecraft's world clock aligned with Skyrim's GameHour.
@@ -18,6 +19,7 @@ public final class SkyTime {
 	private static long lastSyncSeq = -1;
 	private static int lastGeneration = -1;
 	private static int lastWeather = Integer.MIN_VALUE;
+	private static MinecraftServer lastServer;
 
 	private SkyTime() {
 	}
@@ -32,9 +34,11 @@ public final class SkyTime {
 			return;
 		}
 		int generation = SkyLink.generation();
-		if (generation != lastGeneration) {
+		if (generation != lastGeneration || server != lastServer) {
 			lastGeneration = generation;
+			lastServer = server;
 			lastSyncSeq = -1;
+			lastWeather = Integer.MIN_VALUE;
 		}
 		if (SKY.seq == lastSyncSeq) {
 			return;
@@ -53,9 +57,7 @@ public final class SkyTime {
 		// Minecraft 0 = sunrise, while Skyrim GameHour 6 = sunrise.
 		// Therefore: Skyrim 0:00 -> MC 18:00, Skyrim 6:00 -> MC 0:00.
 		long timeOfDay = Math.round((hour / 24.0F) * 24000.0F + 18000.0F) % 24000L;
-		for (ServerLevel level : server.getAllLevels()) {
-			syncLevel(level, timeOfDay);
-		}
+		syncClock(server, timeOfDay);
 		syncWeather(server, SKY.flags);
 	}
 
@@ -74,8 +76,8 @@ public final class SkyTime {
 			: "clear");
 	}
 
-	private static void syncLevel(ServerLevel level, long timeOfDay) {
-		long current = level.getDayTime();
+	private static void syncClock(MinecraftServer server, long timeOfDay) {
+		long current = server.overworld().getOverworldClockTime();
 		long day = Math.floorDiv(current, 24000L);
 
 		// Keep the existing day counter whenever possible, avoiding large jumps for
@@ -89,7 +91,8 @@ public final class SkyTime {
 		}
 
 		if (target != current) {
-			level.setDayTime(target);
+			var clock = server.registryAccess().lookupOrThrow(Registries.WORLD_CLOCK).getOrThrow(WorldClocks.OVERWORLD);
+			server.clockManager().setTotalTicks(clock, target);
 		}
 	}
 }

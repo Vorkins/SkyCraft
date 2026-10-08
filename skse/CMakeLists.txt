@@ -30,7 +30,7 @@ target_precompile_headers(SkyCraft PRIVATE src/PCH.h)
 target_link_libraries(SkyCraft PRIVATE d3d11.lib d3dcompiler.lib dxgi.lib ole32.lib oleaut32.lib)
 target_compile_definitions(SkyCraft PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 if(MSVC)
-	target_compile_options(SkyCraft PRIVATE /W4 /permissive- /Zc:preprocessor /utf-8 /MP /wd4200)
+	target_compile_options(SkyCraft PRIVATE /W4 /permissive- /Zc:preprocessor /utf-8 /MP /EHsc /wd4200)
 	target_link_options(SkyCraft PRIVATE /DEBUG:FULL)
 endif()
 

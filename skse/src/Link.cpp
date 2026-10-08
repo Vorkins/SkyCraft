@@ -185,10 +185,10 @@ namespace skycraft
 		return false;
 	}
 
-	void Link::PushInput(proto::InputType a_type, std::uint16_t a_code, std::int32_t a_a, std::int32_t a_b, std::int32_t a_c)
+	bool Link::PushInput(proto::InputType a_type, std::uint16_t a_code, std::int32_t a_a, std::int32_t a_b, std::int32_t a_c)
 	{
 		if (!base_) {
-			return;
+			return false;
 		}
 		auto* ring = base_ + proto::kOffInputRing;
 		auto& headRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kInputRingHeadOff);
@@ -196,11 +196,12 @@ namespace skycraft
 		const auto head = Atomic(headRef).load(std::memory_order_relaxed);
 		const auto tail = Atomic(tailRef).load(std::memory_order_acquire);
 		if (head - tail >= proto::kInputRingEntries) {
-			return;
+			return false;
 		}
 		auto* entry = reinterpret_cast<proto::InputEvent*>(ring + proto::kInputRingDataOff) + (head & (proto::kInputRingEntries - 1));
 		*entry = { static_cast<std::uint16_t>(a_type), a_code, a_a, a_b, a_c };
 		Atomic(headRef).store(head + 1, std::memory_order_release);
+		return true;
 	}
 
 	bool Link::WriteCollision(proto::ColType a_type, const void* a_payload, std::uint32_t a_bytes)

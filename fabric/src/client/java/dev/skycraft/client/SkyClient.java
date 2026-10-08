@@ -7,6 +7,7 @@ import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyCollision;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
@@ -46,6 +47,7 @@ public final class SkyClient {
 	private static int lastPacedSeq;
 	private static boolean skyrimStalled;
 	private static int exporterErrors;
+	private static PauseScreen nativePauseScreen;
 
 	private SkyClient() {
 	}
@@ -106,6 +108,18 @@ public final class SkyClient {
 		hideWindowOnce(minecraft);
 		applyViewportSize(minecraft);
 		MirrorWorld.openWhenReady(minecraft);
+
+		boolean nativeControl = (sky.flags & Proto.SKY_NATIVE_CONTROL) != 0;
+		if (nativeControl && nativePauseScreen == null && minecraft.player != null && minecraft.gui.screen() == null) {
+			InputBridge.releaseAll();
+			nativePauseScreen = new PauseScreen(true);
+			minecraft.gui.setScreen(nativePauseScreen);
+		} else if (!nativeControl && nativePauseScreen != null) {
+			if (minecraft.gui.screen() == nativePauseScreen) {
+				minecraft.gui.setScreen(null);
+			}
+			nativePauseScreen = null;
+		}
 
 		if (sky.menuOpen() || sky.loading()) {
 			InputBridge.releaseAll();
@@ -338,6 +352,9 @@ public final class SkyClient {
 			Vec3 feet = player.getPosition(partial);
 			Camera camera = minecraft.gameRenderer.mainCamera();
 			flags |= Proto.MC_IN_WORLD;
+			if (minecraft.getSingleplayerServer() != null || net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Loot.TYPE)) {
+				flags |= Proto.MC_LOOT_READY;
+			}
 			if (player.onGround()) {
 				flags |= Proto.MC_ON_GROUND;
 			}

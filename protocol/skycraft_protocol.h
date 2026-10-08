@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 12;
+	inline constexpr std::uint32_t kVersion = 13;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -61,6 +61,7 @@ namespace skycraft::proto
 		kSkyLoading = 1u << 2,   // loading screen / cell transition in progress
 		kSkyRaining = 1u << 3,   // Skyrim precipitation is rain
 		kSkySnowing = 1u << 4,   // Skyrim precipitation is snow
+		kSkyNativeControl = 1u << 5,  // manual Skyrim controls; pause the local Minecraft world
 	};
 
 	// Skyrim's water (lakes, rivers, the sea) around the player, for Minecraft to treat as its own
@@ -102,6 +103,7 @@ namespace skycraft::proto
 		kMcDead = 1u << 5,
 		kMcSwimming = 1u << 6,
 		kMcFlying = 1u << 7,
+		kMcLootReady = 1u << 8,  // this client's local/remote server supports loot conversion
 	};
 
 	struct McState

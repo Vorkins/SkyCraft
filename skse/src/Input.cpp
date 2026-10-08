@@ -1,5 +1,7 @@
 #include "Game.h"
 
+#include <SimpleIni.h>
+
 namespace skycraft
 {
 	namespace
@@ -42,6 +44,7 @@ namespace skycraft
 		constexpr std::uint32_t kDikM = 0x32;        // Skyrim map
 		constexpr std::uint32_t kDikO = 0x18;        // Minecraft pause / options menu (Esc is Skyrim's)
 		constexpr std::uint32_t kDikF9 = 0x43;       // Skyrim quickload
+		constexpr std::uint32_t kDikF8 = 0x42;       // Toggle Skyrim / Minecraft control
 
 		enum LootCategory : std::uint16_t
 		{
@@ -94,17 +97,33 @@ namespace skycraft
 
 		bool TryLootTarget(RE::TESObjectREFR* a_target, RE::PlayerCharacter* a_player)
 		{
+			static const bool enabled = [] {
+				CSimpleIniA ini;
+				ini.SetUnicode();
+				ini.LoadFile("Data/SKSE/Plugins/SkyCraft.ini");
+				return ini.GetBoolValue("Gameplay", "bLootToMinecraft", true);
+			}();
+			proto::McState mc{};
+			if (!enabled || !Link::Get().ReadMcState(mc) || !(mc.flags & proto::kMcLootReady)) {
+				return false;
+			}
 			if (!a_target || !a_player || a_target == a_player) {
 				return false;
 			}
 			auto* actor = a_target->As<RE::Actor>();
 			const bool deadActor = actor && actor->IsDead();
-			const bool container = a_target->GetContainer() != nullptr;
-			if (!deadActor && !container) {
+			const bool container = !actor && a_target->GetContainer() != nullptr;
+			if ((!deadActor && !container) || a_target->IsLocked() || !State().mcInWorld || !Link::Get().McAlive()) {
 				return false;
 			}
 
 			auto inventory = a_target->GetInventory();
+			// Native activation keeps quest items and their pickup scripts accessible.
+			for (const auto& [object, entry] : inventory) {
+				if (object && entry.first > 0 && entry.second && entry.second->IsQuestObject()) {
+					return false;
+				}
+			}
 			int sent = 0;
 			int removed = 0;
 			for (auto& [object, entry] : inventory) {
@@ -118,19 +137,22 @@ namespace skycraft
 				}
 				const int count = std::min(entry.first, 1024);
 				const auto category = LootCategoryFor(object);
-				Link::Get().PushInput(
+				if (!Link::Get().PushInput(
 					proto::kInLootItem,
 					category,
 					static_cast<std::int32_t>(object->GetFormID()),
 					count,
-					static_cast<std::int32_t>(a_target->GetFormID()));
+					static_cast<std::int32_t>(a_target->GetFormID()))) {
+					logger::warn("loot queue full: keeping remaining items in Skyrim");
+					return false;
+				}
 				a_target->RemoveItem(object, count, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 				sent++;
 				removed += count;
 			}
 			if (sent == 0) {
 				logger::info("loot target {:08X} ({}) is empty", a_target->GetFormID(), a_target->GetDisplayFullName());
-				return true;
+				return false;
 			}
 			logger::info("looted {:08X} ({}) -> {} Skyrim stacks / {} items", a_target->GetFormID(), a_target->GetDisplayFullName(), sent, removed);
 			return true;
@@ -201,7 +223,7 @@ namespace skycraft
 				if (menuOpen) {
 					st.skyrimMenuOpen = true;
 				}
-				const bool route = st.puppeting && !menuOpen;
+				bool route = st.puppeting && !menuOpen;
 
 				for (auto* e = *a_event; e; e = e->next) {
 					switch (e->GetEventType()) {
@@ -228,6 +250,13 @@ namespace skycraft
 							auto* button = e->AsButtonEvent();
 							const bool down = button->IsDown();
 							const bool up = button->IsUp();
+							if (button->GetDevice() == RE::INPUT_DEVICE::kKeyboard && button->GetIDCode() == kDikF8) {
+								if (down && !menuOpen && (!st.mcScreenOpen || st.nativeControl)) {
+									Game::ToggleNativeControl();
+									route = false;
+								}
+								break;
+								}
 							if (!route || (!down && !up)) {
 								break;
 							}

@@ -857,7 +857,7 @@ namespace skycraft
 				// Still drain Minecraft's events so stale hits don't land when control resumes.
 				proto::McEvent ev;
 				while (link.PopEvent(ev)) {
-					if (ev.type == proto::kEvPlayerDied && link.McAlive()) {
+					if (ev.type == proto::kEvPlayerDied && link.McAlive() && !State().nativeControl) {
 						KillPlayer(a_player, ev);
 					}
 				}

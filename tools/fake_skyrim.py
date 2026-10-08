@@ -14,7 +14,7 @@ import time
 import zlib
 
 MAGIC = 0x43594B53
-VERSION = 11
+VERSION = 13
 NAME = os.environ.get("SKYCRAFT_LINK", "Local\\SkyCraft_v1")  # fake_guest.py runs one beside a real Skyrim
 OFF_SKY = 0x100
 OFF_MC = 0x200
